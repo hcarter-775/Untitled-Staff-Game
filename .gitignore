@@ -1,0 +1,25 @@
+# Unity specific
+/[Ll]ibrary/
+/[Tt]emp/
+/[Oo]bj/
+/[Bb]uild/
+/[Bb]uilds/
+/[Ll]ogs/
+/[Uu]ser[Ss]ettings/
+
+# Visual Studio / MonoDevelop specific
+/[Ee]xported[Oo]bj/
+/[Ll]ocal[Cc]ache/
+/.vs/
+/.vscode/
+/Assets/Plugins/Editor/
+/ProjectSettings/
+
+# macOS specific files
+/[Dd]ata/[Dd]ata
+/[Dd]ata/.DS_Store
+
+# Rider specific
+.idea/
+*.csproj
+*.sln
