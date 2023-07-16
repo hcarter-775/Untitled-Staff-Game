@@ -112,12 +112,14 @@ public class PlayerController : MonoBehaviour
     void Update()
     {
         // Get the desired actions from the player through input
-        m_XMoveRequested = (Input.GetKey(KeyCode.A) ? -1f : 0f) + (Input.GetKey(KeyCode.D) ? 1f : 0f);
-        if (Input.GetKey(KeyCode.W) && m_CurrJumpState == JumpState.PENDING_PRESS)
+        m_XMoveRequested = Input.GetAxisRaw("Horizontal");
+        float m_XJump = Input.GetAxisRaw("Jump");
+        // m_XMoveRequested = (Input.GetKey(KeyCode.A) ? -1f : 0f) + (Input.GetKey(KeyCode.D) ? 1f : 0f);
+        if ((m_XJump != 0) && (m_CurrJumpState == JumpState.PENDING_PRESS))
         {
             m_CurrJumpState = JumpState.JUMP_REQUESTED;
         }
-        if (!Input.GetKey(KeyCode.W))
+        if (m_XJump == 0)
         {
             // always end the jump if the jump key is released
             m_CurrJumpState = JumpState.PENDING_PRESS;
