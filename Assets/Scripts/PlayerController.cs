@@ -52,8 +52,10 @@ public class PlayerController : MonoBehaviour
     private JumpState m_CurrJumpState;
     private int m_JumpsRemaining;
     private float m_XMoveRequested; // [-1, 1] for how much to move the player
+    private float m_RotMoveRequested; // [-1, 1] for how much to rotate the staff
 
     private Rigidbody2D m_Rigidbody;
+    private Vector2 m_StaffPos;
     private Vector2 m_Speed;
     private Vector2 totalAccel;
 
@@ -120,6 +122,10 @@ public class PlayerController : MonoBehaviour
             // always end the jump if the jump key is released
             m_CurrJumpState = JumpState.PENDING_PRESS;
         }
+
+        // get the position of the mouse relative to the player in order to find the rotational
+        // input desired for the staff
+
     }
 
     void FixedUpdate()
@@ -129,6 +135,9 @@ public class PlayerController : MonoBehaviour
         TTop = m_TouchingTop;
         TLeft = m_TouchingLeft;
         TRight = m_TouchingRight;
+
+        // get the staff position
+
 
         // no accelleration at the start of the frame
         totalAccel.x = 0;
