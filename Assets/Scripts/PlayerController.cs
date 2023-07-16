@@ -76,9 +76,18 @@ public class PlayerController : MonoBehaviour
     private bool TLeft;
     private bool TRight;
 
+
+    // Staff Components: Includes pointer to the staff's tip, whether it is 
+    // attached to the ground, location at a ground collision 
+    private Transform s_TipLocation; 
+    private StaffController s_PublicVariables; 
+
     void Start()
     {
+        // connect components
         m_Rigidbody = GetComponent<Rigidbody2D>();
+        s_TipLocation = transform.GetChild(0).GetComponent<Transform>();
+        s_PublicVariables = transform.GetChild(0).GetComponent<StaffController>();
 
         // setup default movement
         GroundedMovement.MaxSpeed = new Vector2(6f, 20f);
@@ -132,10 +141,8 @@ public class PlayerController : MonoBehaviour
 
         // get the position of the mouse relative to the player in order to find the rotational
         // input desired for the staff
-        Vector2 mousePos = Camera.main.ScreenToWorldPoint(Input.mousePosition) - gameObject.transform.position;
-        float angle = Vector2.SignedAngle(mousePos, m_StaffPos - (Vector2)gameObject.transform.position);
-        angle = Mathf.Max(angle, -1*DegreesForMaxRotation);
-        angle = Mathf.Min(angle, DegreesForMaxRotation);
+        Vector2 mousePos = Camera.main.ScreenToWorldPoint(Input.mousePosition) - transform.position;
+        float angle = Mathf.Clamp(Vector2.SignedAngle(mousePos, m_StaffPos - (Vector2)transform.position), -1*DegreesForMaxRotation, DegreesForMaxRotation);
         m_RotMoveRequested = angle / DegreesForMaxRotation;
     }
 
@@ -148,24 +155,24 @@ public class PlayerController : MonoBehaviour
         TRight = m_TouchingRight;
 
         // get the staff position
-        m_StaffPos = gameObject.transform.GetChild(0).transform.position;
+        m_StaffPos = s_TipLocation.position;
 
         // no accelleration at the start of the frame
         totalAccel.x = 0;
         totalAccel.y = 0;
 
         // handle the player left and right linear inputs and the jump input
-        totalAccel += HandlePlayerStanardInput();
+        totalAccel += HandlePlayerStandardInput();
 
         // handle player rotational inputs (if the staff is connected to something)
         totalAccel += HandleRotationalStaffInput();
 
+        // handle gravity and friction acceleration
+        totalAccel += HandleFrictionGravity();
+
         // if the staff is out, calculate the current state of the staff, including
         // how much it is compressed and the reqired accel change from that
         totalAccel += HandleStaffCompression();
-
-        // handle gravity and friction acceleration
-        totalAccel += HandleFrictionGravity();
 
         // limit the velocities of the player as needed
         m_Speed += totalAccel;
@@ -192,7 +199,7 @@ public class PlayerController : MonoBehaviour
         }
     }
 
-    private Vector2 HandlePlayerStanardInput()
+    private Vector2 HandlePlayerStandardInput()
     {
         MovementConstants movementConsts;
         Vector2 accel = new Vector2(0f, 0f);
@@ -265,8 +272,8 @@ public class PlayerController : MonoBehaviour
     {
         // DEBUG right now the code will just put the end of the staff right at where the
         // mouse is pointed with little physics
-        Vector2 mousePos = Camera.main.ScreenToWorldPoint(Input.mousePosition) - gameObject.transform.position;
-        gameObject.transform.GetChild(0).transform.position = (StaffLength * mousePos.normalized) + (Vector2)gameObject.transform.position;
+        Vector2 mousePos = Camera.main.ScreenToWorldPoint(Input.mousePosition) - transform.position;
+        s_TipLocation.position = (StaffLength * mousePos.normalized) + (Vector2)transform.position;
 
         // check if we are connected to anything or not and the mass of what is connected.
         // this will change the point of rotation to somewhere in between the player and
@@ -291,20 +298,29 @@ public class PlayerController : MonoBehaviour
 
     private Vector2 HandleStaffCompression()
     {
+        Vector2 accel = new Vector2(0f, 0f);
+
         // see if the staff is colliding with anything, and save a pointer to what it
         // is connected to
-        // TODO
+        if (s_PublicVariables.isAttached) 
+        {
+            // calculate the compression/extension of the staff based on the position of the tip
+            float s_NewLength = (transform.position - (Vector3)s_PublicVariables.collisionLoc).magnitude;
 
-        // calculate the compression/extension of the staff based on the position of the tip
-        // TODO
+            // get the acceleration of the player and the object the tip is connected to
+            // based on the mass of the player and other object. If it is a fixed object
+            // then do the math such that it has infinite mass
+            // TODO
 
-        // get the acceleration of the player and the object the tip is connected to
-        // based on the mass of the player and other object. If it is a fixed object
-        // (does not have a rigidbody 2D) then do the math such that it has infinite mass
-        // TODO
+            // create fixed object layer, these have infinite mass
+            // if not fixed object, measure where it was hit, and what direction it was going, and 
+            // with what acceleration
+            // TODO 
+            Vector2 normed_dir = (transform.position - (Vector3)s_PublicVariables.collisionLoc).normalized;
+        }
 
         // return the acceleraion
-        return new Vector2(0f, 0f);
+        return accel;
     }
 
     private Vector2 HandleFrictionGravity()
