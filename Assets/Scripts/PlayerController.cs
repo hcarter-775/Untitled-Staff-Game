@@ -40,6 +40,11 @@ public class PlayerController : MonoBehaviour
     * END MOVEMENT CONSTANTS
     */
 
+    // what degree difference between cursor position corresponds to a maximum rotational
+    // input for moving the staff
+    public float DegreesForMaxRotation = 10f;
+    public float StaffLength = 1f;
+
     // ContactFilters for top, bot, and sides of the player. They will get handled
     // in unique ways in the FixedUpdate section
     public ContactFilter2D BotContactFilter;
@@ -127,7 +132,11 @@ public class PlayerController : MonoBehaviour
 
         // get the position of the mouse relative to the player in order to find the rotational
         // input desired for the staff
-
+        Vector2 mousePos = Camera.main.ScreenToWorldPoint(Input.mousePosition) - gameObject.transform.position;
+        float angle = Vector2.SignedAngle(mousePos, m_StaffPos - (Vector2)gameObject.transform.position);
+        angle = Mathf.Max(angle, -1*DegreesForMaxRotation);
+        angle = Mathf.Min(angle, DegreesForMaxRotation);
+        m_RotMoveRequested = angle / DegreesForMaxRotation;
     }
 
     void FixedUpdate()
@@ -139,7 +148,7 @@ public class PlayerController : MonoBehaviour
         TRight = m_TouchingRight;
 
         // get the staff position
-
+        m_StaffPos = gameObject.transform.GetChild(0).transform.position;
 
         // no accelleration at the start of the frame
         totalAccel.x = 0;
@@ -254,6 +263,11 @@ public class PlayerController : MonoBehaviour
 
     private Vector2 HandleRotationalStaffInput()
     {
+        // DEBUG right now the code will just put the end of the staff right at where the
+        // mouse is pointed with little physics
+        Vector2 mousePos = Camera.main.ScreenToWorldPoint(Input.mousePosition) - gameObject.transform.position;
+        gameObject.transform.GetChild(0).transform.position = (StaffLength * mousePos.normalized) + (Vector2)gameObject.transform.position;
+
         // check if we are connected to anything or not and the mass of what is connected.
         // this will change the point of rotation to somewhere in between the player and
         // object or not
