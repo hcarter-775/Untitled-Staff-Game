@@ -1,10 +1,6 @@
 # Unity specific
 /[Ll]ibrary/
 /[Tt]emp/
-/[Oo]bj/
-/[Bb]uild/
-/[Bb]uilds/
-/[Ll]ogs/
 /[Uu]ser[Ss]ettings/
 
 # Visual Studio / MonoDevelop specific
@@ -13,7 +9,6 @@
 /.vs/
 /.vscode/
 /Assets/Plugins/Editor/
-/ProjectSettings/
 
 # macOS specific files
 /[Dd]ata/[Dd]ata
