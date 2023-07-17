@@ -5,21 +5,25 @@ using UnityEngine;
 public class StaffController : MonoBehaviour
 {
 
+    public float STAFF_RESISTANCE = 2.0f; // k of Hooke's Law
     public Vector2 collisionLoc; // holds location of latest collison point
-    public bool isColliding; // is staff currently in colliding
-    public Rigidbody2D entity;
+    public bool isCollidingStatic; // is staff currently in colliding
+    public bool isCollidingKinematic; // is staff currently colliding with a moving object
 
     void OnCollisionEnter2D(Collision2D other) 
     {
-        isColliding = true;
-        collisionLoc =  other.collider.ClosestPoint(transform.position);
-        // print("in " + collisionLoc);
-        print("in");
+        if (other.gameObject.CompareTag("Static Terrain")) 
+        {
+            isCollidingStatic = true;
+            collisionLoc =  other.collider.ClosestPoint(transform.position);
+        }
     }
 
     void OnCollisionExit2D(Collision2D other)
     {
-        isColliding = false;
-        print("out");
+        if (other.gameObject.CompareTag("Static Terrain")) 
+        {
+            isCollidingStatic = false;
+        }
     }
 }

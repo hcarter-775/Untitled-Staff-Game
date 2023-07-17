@@ -88,7 +88,6 @@ public class PlayerController : MonoBehaviour
     private Vector2 s_currPE = Vector2.zero; // stores current PE in staff
     private float s_rigidLength; // length of uncompressed staff
     private float s_currLength; // current length of staff
-    private float s_growthAcc; // how fast does staff grow when not in contact with ground;
 
     void Start()
     {
@@ -101,7 +100,6 @@ public class PlayerController : MonoBehaviour
         s_rigidLength = (transform.position - s_TipLocation.position).magnitude;
         s_dir = (transform.position - s_TipLocation.position).normalized;
         s_currLength = s_rigidLength;
-        s_growthAcc = s_rigidLength * 0.5f;
 
         // setup default movement
         GroundedMovement.MaxSpeed = new Vector2(6f, 20f);
@@ -316,28 +314,29 @@ public class PlayerController : MonoBehaviour
         Vector2 accel = Vector2.zero;
 
         // is staff tip colliding
-        if (s_PublicVariables.isColliding) 
+        if (s_PublicVariables.isCollidingStatic) 
         {
-            
             // gets current distance from player to staff tip
             s_currLength = (transform.position - (Vector3)s_PublicVariables.collisionLoc).magnitude;
 
             // added acceleration : force dir of staff * delta staff diff * hooke's constant             
-            accel = s_dir * (s_rigidLength - s_currLength) * GlobalConstants.STAFF_RESISTANCE;
+            accel = s_dir * (s_rigidLength - s_currLength) * s_PublicVariables.STAFF_RESISTANCE;
 
             // save the total acc given to the staff
             s_currPE += accel;
-
-        } else {
-
+        } 
+        else 
+        {
             // increases staff length, max is rigid length
-            s_currLength = Mathf.Min(s_currLength + s_growthAcc, s_rigidLength); 
-   
+            if (s_currLength < s_rigidLength) 
+            {
+                s_currLength = Mathf.Min((transform.position - (Vector3)s_PublicVariables.collisionLoc).magnitude, s_rigidLength); 
+            }
+
             // releases staff's stored energy in one update
-            accel = s_dir * s_currPE;
+            accel = s_currPE;
             s_currPE = Vector2.zero;
         }
-
         return accel;
     }
 
