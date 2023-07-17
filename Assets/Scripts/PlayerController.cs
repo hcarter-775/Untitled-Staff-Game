@@ -82,11 +82,13 @@ public class PlayerController : MonoBehaviour
     */
 
     // staff components
-    private Transform s_TipLocation; // location of staff's tip
-    private StaffController s_PublicVariables; // staff controller variables
-    private Vector2 s_dir; // vector describing the staff direction relative to the player
-    private float s_rigidLength; // length of staff when uncompressed
+    private Transform s_TipLocation;
+    private StaffController s_PublicVariables; // staff controller variables, in StaffController.cs
+    private Vector2 s_dir; // normed vector, describes staff direction wrt player
+    private Vector2 s_currPE = Vector2.zero; // stores current PE in staff
+    private float s_rigidLength; // length of uncompressed staff
     private float s_currLength; // current length of staff
+    private float s_growthAcc; // how fast does staff grow when not in contact with ground;
 
     void Start()
     {
@@ -99,6 +101,7 @@ public class PlayerController : MonoBehaviour
         s_rigidLength = (transform.position - s_TipLocation.position).magnitude;
         s_dir = (transform.position - s_TipLocation.position).normalized;
         s_currLength = s_rigidLength;
+        s_growthAcc = s_rigidLength * 0.5f;
 
         // setup default movement
         GroundedMovement.MaxSpeed = new Vector2(6f, 20f);
@@ -310,28 +313,54 @@ public class PlayerController : MonoBehaviour
 
     private Vector2 HandleStaffCompression()
     {
-        print("Total Acc: " + totalAccel);
-        Vector2 accel = new Vector2(0f, 0f);
+        Vector2 accel = Vector2.zero;
 
         // is staff tip colliding
         if (s_PublicVariables.isColliding) 
         {
-            // find current distance between staff tip and player
-            s_currLength = (transform.position - (Vector3)s_PublicVariables.collisionLoc).magnitude;
             
-            // acceleration : force dir of staff * delta staff diff * hooke's constant             
+            // gets current distance from player to staff tip
+            s_currLength = (transform.position - (Vector3)s_PublicVariables.collisionLoc).magnitude;
+
+            // added acceleration : force dir of staff * delta staff diff * hooke's constant             
             accel = s_dir * (s_rigidLength - s_currLength) * GlobalConstants.STAFF_RESISTANCE;
 
-            // get the accelerations of the player and the object that the tip is connected to
+            // save the total acc given to the staff
+            s_currPE += accel;
 
-            // based on the masses of the player and this collision object, 
-            // create fixed object layer, these have infinite mass
-            // if not fixed object, measure where it was hit, and what direction it was going, and 
-            // with what acceleration
-            // TODO 
+        } else {
+
+            // increases staff length, max is rigid length
+            s_currLength = Mathf.Min(s_currLength + s_growthAcc, s_rigidLength); 
+   
+            // releases staff's stored energy in one update
+            accel = s_dir * s_currPE;
+            s_currPE = Vector2.zero;
         }
 
         return accel;
+    }
+
+    // will be called in HandleStaffCompression() fxn
+    private Vector2 HandleStaffToEntityInteraction() {
+        // check whether collision with fixed loc or not.
+
+        // change staff length based on acceleration from other side 
+
+        // use acceleration of staff itself to define what amount of totalAcc/s_currPE 
+        // is moved into the entity being hit (if not a fixed loc)
+
+        // Calvin's notes from HandleStaffCompression(), may be better suited here.
+
+        // get the accelerations of the player and the object that the tip is connected to
+
+        // based on the masses of the player and this collision object, 
+        // create fixed object layer, these have infinite mass
+        // if not fixed object, measure where it was hit, and what direction it was going, and 
+        // with what acceleration
+        // TODO 
+
+        return Vector2.zero;
     }
 
     private Vector2 HandleFrictionGravity()
