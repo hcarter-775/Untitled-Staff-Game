@@ -12,11 +12,14 @@ public class StaffController : MonoBehaviour
     void OnCollisionEnter2D(Collision2D other) 
     {
         isColliding = true;
-        collisionLoc = transform.position;
+        collisionLoc =  other.collider.ClosestPoint(transform.position);
+        // print("in " + collisionLoc);
+        print("in");
     }
 
     void OnCollisionExit2D(Collision2D other)
     {
         isColliding = false;
+        print("out");
     }
 }
