@@ -136,7 +136,7 @@ GameObject:
   - component: {fileID: 323147557}
   m_Layer: 0
   m_Name: Triangle
-  m_TagString: Untagged
+  m_TagString: Static Terrain
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
@@ -361,7 +361,7 @@ GameObject:
   - component: {fileID: 663809069}
   m_Layer: 0
   m_Name: Triangle (1)
-  m_TagString: Untagged
+  m_TagString: Static Terrain
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
@@ -525,9 +525,10 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 80788ab563050433988bc988eab35e69, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  STAFF_RESISTANCE: 2
   collisionLoc: {x: 0, y: 0}
-  isColliding: 0
-  entity: {fileID: 0}
+  isCollidingStatic: 0
+  isCollidingKinematic: 0
 --- !u!1 &1404143612
 GameObject:
   m_ObjectHideFlags: 0
