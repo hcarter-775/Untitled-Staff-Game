@@ -43,7 +43,6 @@ public class PlayerController : MonoBehaviour
     // what degree difference between cursor position corresponds to a maximum rotational
     // input for moving the staff
     public float DegreesForMaxRotation = 10f;
-    public float StaffLength = 1f;
 
     // ContactFilters for top, bot, and sides of the player. They will get handled
     // in unique ways in the FixedUpdate section
@@ -76,18 +75,30 @@ public class PlayerController : MonoBehaviour
     private bool TLeft;
     private bool TRight;
 
+    /* 
 
-    // Staff Components: Includes pointer to the staff's tip, whether it is 
-    // attached to the ground, location at a ground collision 
-    private Transform s_TipLocation; 
-    private StaffController s_PublicVariables; 
+    Harrison's variable additions
+
+    */
+
+    // staff components
+    private Transform s_TipLocation; // location of staff's tip
+    private StaffController s_PublicVariables; // staff controller variables
+    private Vector2 s_dir; // vector describing the staff direction relative to the player
+    private float s_rigidLength; // length of staff when uncompressed
+    private float s_currLength; // current length of staff
 
     void Start()
     {
-        // connect components
+        // components setup
         m_Rigidbody = GetComponent<Rigidbody2D>();
         s_TipLocation = transform.GetChild(0).GetComponent<Transform>();
         s_PublicVariables = transform.GetChild(0).GetComponent<StaffController>();
+
+        // staff setup
+        s_rigidLength = (transform.position - s_TipLocation.position).magnitude;
+        s_dir = (transform.position - s_TipLocation.position).normalized;
+        s_currLength = s_rigidLength;
 
         // setup default movement
         GroundedMovement.MaxSpeed = new Vector2(6f, 20f);
@@ -273,7 +284,8 @@ public class PlayerController : MonoBehaviour
         // DEBUG right now the code will just put the end of the staff right at where the
         // mouse is pointed with little physics
         Vector2 mousePos = Camera.main.ScreenToWorldPoint(Input.mousePosition) - transform.position;
-        s_TipLocation.position = (StaffLength * mousePos.normalized) + (Vector2)transform.position;
+        s_TipLocation.position = (s_currLength * mousePos.normalized) + (Vector2)transform.position;
+        s_dir = (transform.position - s_TipLocation.position).normalized; // updates staff direction wrt player
 
         // check if we are connected to anything or not and the mass of what is connected.
         // this will change the point of rotation to somewhere in between the player and
@@ -298,28 +310,27 @@ public class PlayerController : MonoBehaviour
 
     private Vector2 HandleStaffCompression()
     {
+        print("Total Acc: " + totalAccel);
         Vector2 accel = new Vector2(0f, 0f);
 
-        // see if the staff is colliding with anything, and save a pointer to what it
-        // is connected to
-        if (s_PublicVariables.isAttached) 
+        // is staff tip colliding
+        if (s_PublicVariables.isColliding) 
         {
-            // calculate the compression/extension of the staff based on the position of the tip
-            float s_NewLength = (transform.position - (Vector3)s_PublicVariables.collisionLoc).magnitude;
+            // find current distance between staff tip and player
+            s_currLength = (transform.position - (Vector3)s_PublicVariables.collisionLoc).magnitude;
+            
+            // acceleration : force dir of staff * delta staff diff * hooke's constant             
+            accel = s_dir * (s_rigidLength - s_currLength) * GlobalConstants.STAFF_RESISTANCE;
 
-            // get the acceleration of the player and the object the tip is connected to
-            // based on the mass of the player and other object. If it is a fixed object
-            // then do the math such that it has infinite mass
-            // TODO
+            // get the accelerations of the player and the object that the tip is connected to
 
+            // based on the masses of the player and this collision object, 
             // create fixed object layer, these have infinite mass
             // if not fixed object, measure where it was hit, and what direction it was going, and 
             // with what acceleration
             // TODO 
-            Vector2 normed_dir = (transform.position - (Vector3)s_PublicVariables.collisionLoc).normalized;
         }
 
-        // return the acceleraion
         return accel;
     }
 

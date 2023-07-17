@@ -10,6 +10,6 @@ public class GlobalConstants : MonoBehaviour
     public const float TOP_COLLISION_THRESH_deg = 45f;
     // anything that is not the BOT or TOP collision is the side
 
-    public const float PLAYER_MASS = 1.0f;
-    public const float STAFF_K_CONST = 0.2f; 
+    public const float PLAYER_MASS = 1.0f; // mass of player
+    public const float STAFF_RESISTANCE = 2.0f; // k of Hooke's Law
 }
