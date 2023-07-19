@@ -59,7 +59,6 @@ public class PlayerController : MonoBehaviour
     private float m_RotMoveRequested; // [-1, 1] for how much to rotate the staff
 
     private Rigidbody2D m_Rigidbody;
-    private Vector2 m_StaffPos;
     private Vector2 m_Speed;
     private Vector2 totalAccel;
 
@@ -82,9 +81,10 @@ public class PlayerController : MonoBehaviour
     */
 
     // staff components
-    private Transform s_TipLocation;
+    private Transform s_TipLocation; // location of the staff's non-player tip
+    private Rigidbody2D s_RigidBody; // rigidBody2d of the staff tip
     private StaffController s_PublicVariables; // staff controller variables, in StaffController.cs
-    private Vector2 s_dir; // normed vector, describes staff direction wrt player
+    public Vector2 s_dir; // normed vector, describes staff direction wrt player
     private Vector2 s_currPE = Vector2.zero; // stores current PE in staff
     private float s_rigidLength; // length of uncompressed staff
     private float s_currLength; // current length of staff
@@ -94,6 +94,7 @@ public class PlayerController : MonoBehaviour
         // components setup
         m_Rigidbody = GetComponent<Rigidbody2D>();
         s_TipLocation = transform.GetChild(0).GetComponent<Transform>();
+        s_RigidBody = transform.GetChild(0).GetComponent<Rigidbody2D>();
         s_PublicVariables = transform.GetChild(0).GetComponent<StaffController>();
 
         // staff setup
@@ -151,11 +152,14 @@ public class PlayerController : MonoBehaviour
             m_CurrJumpState = JumpState.PENDING_PRESS;
         }
 
-        // get the position of the mouse relative to the player in order to find the rotational
-        // input desired for the staff
+        // get the position of the mouse wrt the player in order to find the desired staff rotation input
         Vector2 mousePos = Camera.main.ScreenToWorldPoint(Input.mousePosition) - transform.position;
-        float angle = Mathf.Clamp(Vector2.SignedAngle(mousePos, m_StaffPos - (Vector2)transform.position), -1*DegreesForMaxRotation, DegreesForMaxRotation);
-        m_RotMoveRequested = angle / DegreesForMaxRotation;
+        float staffTipAngleWRTPlayer = Mathf.Clamp
+        (
+            Vector2.SignedAngle(mousePos, s_TipLocation.position - transform.position),
+            -1*DegreesForMaxRotation, DegreesForMaxRotation
+        );
+        m_RotMoveRequested = staffTipAngleWRTPlayer / DegreesForMaxRotation;
     }
 
     void FixedUpdate()
@@ -166,8 +170,8 @@ public class PlayerController : MonoBehaviour
         TLeft = m_TouchingLeft;
         TRight = m_TouchingRight;
 
-        // get the staff position
-        m_StaffPos = s_TipLocation.position;
+        // updates staff direction wrt player
+        s_dir = (transform.position - s_TipLocation.position).normalized;
 
         // no accelleration at the start of the frame
         totalAccel.x = 0;
@@ -176,7 +180,7 @@ public class PlayerController : MonoBehaviour
         // handle the player left and right linear inputs and the jump input
         totalAccel += HandlePlayerStandardInput();
 
-        // handle player rotational inputs (if the staff is connected to something)
+        // handle staff and player rotational inputs, depends on whether staff is connected to something
         totalAccel += HandleRotationalStaffInput();
 
         // handle gravity and friction acceleration
@@ -204,11 +208,11 @@ public class PlayerController : MonoBehaviour
         // TODO
 
         // DEBUG
-        if (Input.GetKey(KeyCode.UpArrow))
-        {
-            Debug.Log("Touching Bot: " + TBot);
-            Debug.Log("YSpeed: " + m_Speed.y);
-        }
+        // if (Input.GetKey(KeyCode.UpArrow))
+        // {
+        //     Debug.Log("Touching Bot: " + TBot);
+        //     Debug.Log("YSpeed: " + m_Speed.y);
+        // }
     }
 
     private Vector2 HandlePlayerStandardInput()
@@ -243,7 +247,7 @@ public class PlayerController : MonoBehaviour
                 m_CurrJumpState = JumpState.PENDING_RELEASE;
             }
 
-            Debug.Log("Jumping");
+            // Debug.Log("Jumping");
         }
 
         // choose what set of movementConstants to use right now
@@ -285,9 +289,32 @@ public class PlayerController : MonoBehaviour
         // DEBUG right now the code will just put the end of the staff right at where the
         // mouse is pointed with little physics
         Vector2 mousePos = Camera.main.ScreenToWorldPoint(Input.mousePosition) - transform.position;
-        s_TipLocation.position = (s_currLength * mousePos.normalized) + (Vector2)transform.position;
-        s_dir = (transform.position - s_TipLocation.position).normalized; // updates staff direction wrt player
+        
+        // Whether staff can move in direction of player input- may be blocked by an object
+        bool can_rotate = false;
 
+        // staff is colliding with an object 
+        if (s_PublicVariables.isCollidingStatic)
+        {
+            // is player moving away from staff- staff should not get stuck
+            if ((transform.position - s_TipLocation.position).magnitude > s_currLength) can_rotate = true;
+            // small system of linear equations to tell whether the requested direction of input is allowed
+            // basically, can two special orthonormal vectors combine with >=0 constants to get the requested direction
+            else 
+            {
+                Vector2 new_position_dir = (((s_currLength * mousePos.normalized) + (Vector2)transform.position) - s_PublicVariables.collisionLoc).normalized;
+                float x_constant = (new_position_dir.x - s_dir.x)/s_PublicVariables.collisionDir.x;
+                float y_constant = (new_position_dir.y - s_dir.y)/s_PublicVariables.collisionDir.y;
+                float comparison_error = -0.2f; // mathematically perfect system of linear equations would use >= 0 below.
+                if (x_constant >= comparison_error && y_constant >= comparison_error) can_rotate = true;
+
+            }
+        }
+        else can_rotate = true;
+
+        // MovePosition() has better collision detection than a straight position change.
+        if (can_rotate) s_RigidBody.MovePosition((s_currLength * mousePos.normalized) + (Vector2)transform.position);
+    
         // check if we are connected to anything or not and the mass of what is connected.
         // this will change the point of rotation to somewhere in between the player and
         // object or not
@@ -311,6 +338,7 @@ public class PlayerController : MonoBehaviour
 
     private Vector2 HandleStaffCompression()
     {
+
         Vector2 accel = Vector2.zero;
 
         // is staff tip colliding
@@ -327,7 +355,7 @@ public class PlayerController : MonoBehaviour
         } 
         else 
         {
-            // increases staff length, max is rigid length
+            // increases staff length until at rigid length
             if (s_currLength < s_rigidLength) 
             {
                 s_currLength = Mathf.Min((transform.position - (Vector3)s_PublicVariables.collisionLoc).magnitude, s_rigidLength); 
@@ -344,7 +372,9 @@ public class PlayerController : MonoBehaviour
     private Vector2 HandleStaffToEntityInteraction() {
         // check whether collision with fixed loc or not.
 
-        // change staff length based on acceleration from other side 
+        // change staff length based on acceleration from non-player side
+
+        // save amount of energy in staff based on this length-change
 
         // use acceleration of staff itself to define what amount of totalAcc/s_currPE 
         // is moved into the entity being hit (if not a fixed loc)
