@@ -43,7 +43,9 @@ public class PlayerController : MonoBehaviour
     // what degree difference between cursor position corresponds to a maximum rotational
     // input for moving the staff
     public float DegreesForMaxRotation = 10f;
-    public float StaffLength = 1f;
+    public float NormalStaffLength = 1f;
+    public float MaxStaffSpeedAir = 0.1f;
+    public float StaffAccelAir = 0.01f;
 
     // ContactFilters for top, bot, and sides of the player. They will get handled
     // in unique ways in the FixedUpdate section
@@ -60,7 +62,6 @@ public class PlayerController : MonoBehaviour
     private float m_RotMoveRequested; // [-1, 1] for how much to rotate the staff
 
     private Rigidbody2D m_Rigidbody;
-    private Vector2 m_StaffPos;
     private Vector2 m_Speed;
     private Vector2 totalAccel;
 
@@ -76,9 +77,17 @@ public class PlayerController : MonoBehaviour
     private bool TLeft;
     private bool TRight;
 
+    // staff stuff
+    private StaffController m_Staff;
+    private Vector2 m_StaffTipSpeed = new Vector2(0f, 0f);
+    private float CurrentStaffLength;
+    private bool m_IsStaffClockwise = false; // true for clockwise, false for counterclockwise
+
     void Start()
     {
         m_Rigidbody = GetComponent<Rigidbody2D>();
+        m_Staff = transform.GetChild(0).GetComponent<StaffController>();
+        CurrentStaffLength = NormalStaffLength;
 
         // setup default movement
         GroundedMovement.MaxSpeed = new Vector2(6f, 20f);
@@ -130,8 +139,8 @@ public class PlayerController : MonoBehaviour
 
         // get the position of the mouse relative to the player in order to find the rotational
         // input desired for the staff
-        Vector2 mousePos = Camera.main.ScreenToWorldPoint(Input.mousePosition) - gameObject.transform.position;
-        float angle = Vector2.SignedAngle(mousePos, m_StaffPos - (Vector2)gameObject.transform.position);
+        Vector2 mousePos = Camera.main.ScreenToWorldPoint(Input.mousePosition) - transform.position;
+        float angle = Vector2.SignedAngle(mousePos, (Vector2)m_Staff.transform.position - (Vector2)transform.position);
         angle = Mathf.Max(angle, -1*DegreesForMaxRotation);
         angle = Mathf.Min(angle, DegreesForMaxRotation);
         m_RotMoveRequested = angle / DegreesForMaxRotation;
@@ -144,9 +153,6 @@ public class PlayerController : MonoBehaviour
         TTop = m_TouchingTop;
         TLeft = m_TouchingLeft;
         TRight = m_TouchingRight;
-
-        // get the staff position
-        m_StaffPos = gameObject.transform.GetChild(0).transform.position;
 
         // no accelleration at the start of the frame
         totalAccel.x = 0;
@@ -176,7 +182,7 @@ public class PlayerController : MonoBehaviour
         if (TRight && m_Speed.x > 0) m_Speed.x = 0;
 
         // set the new velocity of the player
-        m_Rigidbody.velocity = m_Speed; // TODO this is a pass by refrence I believe, which means this could completely control the speed of the player. Unsure if this is an issue, keep an eye out for it
+        m_Rigidbody.velocity = m_Speed;
 
         // move the relative location of the staff tip to where is will be in the world
         // after this tick. If needed, also move the object that is being grabbed
@@ -261,29 +267,43 @@ public class PlayerController : MonoBehaviour
 
     private Vector2 HandleRotationalStaffInput()
     {
-        // DEBUG right now the code will just put the end of the staff right at where the
-        // mouse is pointed with little physics
-        Vector2 mousePos = Camera.main.ScreenToWorldPoint(Input.mousePosition) - gameObject.transform.position;
-        gameObject.transform.GetChild(0).transform.position = (StaffLength * mousePos.normalized) + (Vector2)gameObject.transform.position;
+        // StaffPosChange is not nessisarily just the velocity of the staff tip, there could
+        // be other things to change it as well which is why another variable is needed
+        var StaffPosChange = default(Vector2);
 
-        // check if we are connected to anything or not and the mass of what is connected.
-        // this will change the point of rotation to somewhere in between the player and
-        // object or not
-        // TODO
+        if (m_Staff.GetCurrentlyContacting())
+        {
+            // if the staff is connected, rotations will be around the center of mass between
+            // the connected object and the player. For infinite mass objects, the center of
+            // mass will be right at the tip of the staff
+            // TODO
+        }
+        else
+        {
+            // increase or decrease the current rotational velocity by the correct amount
+            // based on the input
+            // TODO right now there is a bug with the tip behaving differently clockwise
+            // and counterclockwise. Probably because I never change m_IsStaffClockwise
+            float CurRotMag = m_StaffTipSpeed.magnitude * (m_IsStaffClockwise ? 1 : -1);
+            CurRotMag += (m_RotMoveRequested * StaffAccelAir);
+            CurRotMag = Mathf.Max(CurRotMag, -1*MaxStaffSpeedAir);
+            CurRotMag = Mathf.Min(CurRotMag, MaxStaffSpeedAir);
+            m_StaffTipSpeed = (m_IsStaffClockwise ? 1 : -1) * CurRotMag * 
+                              Vector2.Perpendicular(transform.position - 
+                                                    m_Staff.transform.position).normalized;
 
-        // get the desired angular velocity depending on player input to move the staff
-        // around. Make sure to calculate the initial angular velocity around the tip
-        // so angular velocity can be correctly limited
-        // TODO
+            StaffPosChange = m_StaffTipSpeed;
 
-        // if the staff is not connected to anything, it should rotate around the player
-        // TODO
+            // DEBUG
+            print("StaffTipSpeed: " + m_StaffTipSpeed);
+            print("CurRotMag: " + CurRotMag);
+        }
 
-        // if the staff is connected, rotations will be around the center of mass between
-        // the connected object and the player. For infinite mass objects, the center of
-        // mass will be right at the tip of the staff
-        // TODO
-
+        // make sure the staff does not change in length
+        var RelativeStaffPos = (Vector2)transform.position - (Vector2)m_Staff.transform.position + StaffPosChange;
+        RelativeStaffPos = -1*Vector2.ClampMagnitude(RelativeStaffPos, CurrentStaffLength);
+        m_Staff.transform.position = transform.position + (Vector3)RelativeStaffPos;
+    
         return new Vector2(0f, 0f);
     }
 
