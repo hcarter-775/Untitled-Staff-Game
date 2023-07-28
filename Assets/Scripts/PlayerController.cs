@@ -11,106 +11,178 @@ public enum JumpState
     PENDING_RELEASE = 3
 }
 
+// enum for staff extension states
+public enum staff_state
+{
+    is_extended = 0,
+    is_extending = 1,
+    is_descended = 2,
+    is_descending = 3
+}
+
+// enum for mouse control states
+public enum mouse_control_state
+{
+    on_staff = 0,
+    on_player = 1
+}
+
 [System.Serializable]
 public struct MovementConstants
 {
-    public Vector2 MaxSpeed;
+    public Vector2 max_speed;
     public Vector2 Friction; // (accel from friction) = (Friction) * (Speed)**2
     public float XAccelSpeedingUp; // X Accel when increasing speed
     public float XAccelStopping; // X Accel when changing direction speed
     public float XAccelNoInput; // X Accel when the requested movement is 0
-    public Vector2 TooFastAccel; // Amount of accel to slow down the player when they are faster than the maxspeed
+    public Vector2 TooFastAccel; // Amount of accel to slow down the player when they are faster than the max_speed
+}
+
+[System.Serializable]
+public struct RotationConstants
+{
+    public float max_speed;
+    public float base_speed;
+    public float accel_speedingUp;
+    public float accel_changingDir;
+    public float accel_noInput;
+    public float radians;
+    public int   signed_mousePos;
 }
 
 public class PlayerController : MonoBehaviour
 {
     /*
-    * movement based constants that can be adjusted in the editor
+    * start movement constants : can be changed in editor
     */
 
     // basic movement constants
     public MovementConstants GroundedMovement;
     public MovementConstants AirbornMovement;
 
-    // jump / gravity modification constants
+    public RotationConstants staff_rotation;
+    public RotationConstants player_rotation;
+
+    // jump and gravity modification constants
     public int NumberOfJumps = 3; // number of FixedUpdates in a row that are jumps. Releasing the space bar will end this
     public float JumpImpulse = 5f; // amount of YSpeed that is given with a jump during each FixedUpdate
 
     /*
-    * END MOVEMENT CONSTANTS
+    * end movement constants :
+    *
+    * start contact filters :
     */
 
-    // what degree difference between cursor position corresponds to a maximum rotational
-    // input for moving the staff
-    public float DegreesForMaxRotation = 10f;
-
-    // ContactFilters for top, bot, and sides of the player. They will get handled
-    // in unique ways in the FixedUpdate section
+    // for top, bot, and sides of the player. handled uniquely in FicedUpdate()
     public ContactFilter2D BotContactFilter;
     public ContactFilter2D TopContactFilter;
     public ContactFilter2D LeftContactFilter;
     public ContactFilter2D RightContactFilter;
 
-    // updated in the Frame Update() for maximum speed, but should only be handled
-    // in the FixedUptade() function for consistancy
-    private JumpState m_CurrJumpState;
-    private int m_JumpsRemaining;
-    private float m_XMoveRequested; // [-1, 1] for how much to move the player
-    private float m_RotMoveRequested; // [-1, 1] for how much to rotate the staff
-
-    private Rigidbody2D m_Rigidbody;
-    private Vector2 m_Speed;
-    private Vector2 totalAccel;
-
     // We can check to see if there are any contacts given our contact filter
     // which can be set to a specific layer and normal angle.
-    // there are two variables from each, the state of one is saved each FixedUpdate
-    private bool m_TouchingBot => m_Rigidbody.IsTouching(BotContactFilter);
-    private bool m_TouchingTop => m_Rigidbody.IsTouching(TopContactFilter);
-    private bool m_TouchingLeft => m_Rigidbody.IsTouching(LeftContactFilter);
-    private bool m_TouchingRight => m_Rigidbody.IsTouching(RightContactFilter);
+    // there are two variables from each, the state of one is saved in FixedUpdate()
+    private bool m_TouchingBot => p_rb.IsTouching(BotContactFilter);
+    private bool m_TouchingTop => p_rb.IsTouching(TopContactFilter);
+    private bool m_TouchingLeft => p_rb.IsTouching(LeftContactFilter);
+    private bool m_TouchingRight => p_rb.IsTouching(RightContactFilter);
     private bool TBot;
     private bool TTop;
     private bool TLeft;
     private bool TRight;
 
     /* 
-
-    Harrison's variable additions
-
+    * end contact filters
+    *
+    * start update variables :
     */
 
+    // updated in Update() for maximum speed, but should only
+    // be handled in the FixedUpdate() function for consistancy
+    private mouse_control_state current_mouse_state;
+    public staff_state current_staff_state;
+    private JumpState m_CurrJumpState;
+    private Vector2 mouse_wc;
+    private int m_JumpsRemaining;
+    private float m_XMoveRequested;   // [-1, 1] for how much to move the player
+    private float m_RotDistRequested; // the delta theta change from current position to current mouse position 
+    private float m_RotSignRequested; // -1, 0 or 1
+    private bool m_StaffExtensionRequest; // 1 or -1. 1 is out, -1 is in
+
+
+    /*
+    * end update variables
+    * 
+    * start player and staff components :
+    */
+
+    private float rot_speed;
+
+    // player components 
+    private Rigidbody2D p_rb;
+    private Vector2 m_Speed;
+    private Vector2 totalAccel;
+    private Vector2 m_prevPos;
+    private float p_rad;
+
     // staff components
-    private Transform s_TipLocation; // location of the staff's non-player tip
-    private Rigidbody2D s_RigidBody; // rigidBody2d of the staff tip
-    private StaffController s_PublicVariables; // staff controller variables, in StaffController.cs
-    public Vector2 s_dir; // normed vector, describes staff direction wrt player
-    private Vector2 s_currPE = Vector2.zero; // stores current PE in staff
-    private float s_rigidLength; // length of uncompressed staff
-    private float s_currLength; // current length of staff
+    private StaffController staff;
+    private Rigidbody2D s_rb;
+    private Vector2 s_dir; // normed vector, describes staff direction wrt player
+    private float s_LenRigid; // length of uncompressed staff
+    private float s_LenCurr; // current length of staff
+    public float s_extend = 0.15f;
+    private float s_rad;
+
+    /*
+    * end player and staff components
+    * 
+    */
 
     void Start()
     {
         // components setup
-        m_Rigidbody = GetComponent<Rigidbody2D>();
-        s_TipLocation = transform.GetChild(0).GetComponent<Transform>();
-        s_RigidBody = transform.GetChild(0).GetComponent<Rigidbody2D>();
-        s_PublicVariables = transform.GetChild(0).GetComponent<StaffController>();
+        p_rb = GetComponent<Rigidbody2D>();
+        s_rb = transform.GetChild(0).GetComponent<Rigidbody2D>();
+        staff = transform.GetChild(0).GetComponent<StaffController>();
 
         // staff setup
-        s_rigidLength = (transform.position - s_TipLocation.position).magnitude;
-        s_dir = (transform.position - s_TipLocation.position).normalized;
-        s_currLength = s_rigidLength;
+        s_LenRigid = (p_rb.position - s_rb.position).magnitude;
+        s_LenCurr = s_LenRigid;
+        
+        Physics2D.IgnoreCollision(transform.GetComponent<CapsuleCollider2D>(), 
+        transform.GetChild(0).GetComponent<CircleCollider2D>());
+        
+        // setup default rotation
+        staff_rotation.max_speed = 14f;
+        staff_rotation.base_speed = 9f;
+        staff_rotation.accel_speedingUp = 0.4f;
+        staff_rotation.accel_noInput = 0.8f;
+        staff_rotation.accel_changingDir = 0.5f;
+        staff_rotation.signed_mousePos = 1;
+        // staff_rotation.radians = Mathf.Acos(s_dir.x);
+        s_rad = Mathf.Acos(s_dir.x);
+
+        player_rotation.max_speed = 12f;
+        player_rotation.base_speed = 8f;
+        player_rotation.accel_speedingUp = 0.4f;
+        player_rotation.accel_noInput = 0.8f;
+        player_rotation.accel_changingDir = 0.5f;
+        player_rotation.signed_mousePos = -1;  
+        // player_rotation.radians = -1*Mathf.Acos(s_dir.x);      
+        p_rad = -1*Mathf.Acos(s_dir.x);
+
+        /*  above are my things, and below were previous additions */
 
         // setup default movement
-        GroundedMovement.MaxSpeed = new Vector2(6f, 20f);
+        GroundedMovement.max_speed = new Vector2(6f, 20f);
         GroundedMovement.Friction = new Vector2(0.01f, 0.01f);
         GroundedMovement.XAccelSpeedingUp = 0.5f;
         GroundedMovement.XAccelStopping = 2f;
         GroundedMovement.XAccelNoInput = 0.15f;
         GroundedMovement.TooFastAccel = new Vector2(1f, 1f);
 
-        AirbornMovement.MaxSpeed = new Vector2(20f, 30f);
+        AirbornMovement.max_speed = new Vector2(20f, 30f);
         AirbornMovement.Friction = new Vector2(0.001f, 0.001f);
         AirbornMovement.XAccelSpeedingUp = 0.15f;
         AirbornMovement.XAccelStopping = 1f;
@@ -136,6 +208,7 @@ public class PlayerController : MonoBehaviour
         RightContactFilter.maxNormalAngle = 270 - GlobalConstants.BOT_COLLISION_THRESH_deg;
     }
 
+    /* Update / Control Functions */
     void Update()
     {
         // Get the desired actions from the player through input
@@ -152,14 +225,15 @@ public class PlayerController : MonoBehaviour
             m_CurrJumpState = JumpState.PENDING_PRESS;
         }
 
-        // get the position of the mouse wrt the player in order to find the desired staff rotation input
-        Vector2 mousePos = Camera.main.ScreenToWorldPoint(Input.mousePosition) - transform.position;
-        float staffTipAngleWRTPlayer = Mathf.Clamp
-        (
-            Vector2.SignedAngle(mousePos, s_TipLocation.position - transform.position),
-            -1*DegreesForMaxRotation, DegreesForMaxRotation
-        );
-        m_RotMoveRequested = staffTipAngleWRTPlayer / DegreesForMaxRotation;
+        // left click the mouse to extend/descend the staff
+        if (Input.GetMouseButtonDown(0) && !m_StaffExtensionRequest)
+            m_StaffExtensionRequest = true;
+
+        // Get desired staff rotation (in radians) from player input
+        mouse_wc = (Vector2) Camera.main.ScreenToWorldPoint(Input.mousePosition) - p_rb.position;
+        float signedAngle = Vector2.SignedAngle(mouse_wc, -s_dir) * Mathf.Deg2Rad;
+        m_RotDistRequested = Mathf.Abs(signedAngle);
+        m_RotSignRequested = (int) Mathf.Sign(signedAngle);
     }
 
     void FixedUpdate()
@@ -170,9 +244,6 @@ public class PlayerController : MonoBehaviour
         TLeft = m_TouchingLeft;
         TRight = m_TouchingRight;
 
-        // updates staff direction wrt player
-        s_dir = (transform.position - s_TipLocation.position).normalized;
-
         // no accelleration at the start of the frame
         totalAccel.x = 0;
         totalAccel.y = 0;
@@ -180,15 +251,11 @@ public class PlayerController : MonoBehaviour
         // handle the player left and right linear inputs and the jump input
         totalAccel += HandlePlayerStandardInput();
 
-        // handle staff and player rotational inputs, depends on whether staff is connected to something
-        totalAccel += HandleRotationalStaffInput();
-
         // handle gravity and friction acceleration
         totalAccel += HandleFrictionGravity();
 
-        // if the staff is out, calculate the current state of the staff, including
-        // how much it is compressed and the reqired accel change from that
-        totalAccel += HandleStaffCompression();
+        // handles all staff components, including player rotation, staff extension, and compression
+        totalAccel += HandleStaffControl();
 
         // limit the velocities of the player as needed
         m_Speed += totalAccel;
@@ -201,18 +268,105 @@ public class PlayerController : MonoBehaviour
         if (TRight && m_Speed.x > 0) m_Speed.x = 0;
 
         // set the new velocity of the player
-        m_Rigidbody.velocity = m_Speed; // TODO this is a pass by refrence I believe, which means this could completely control the speed of the player. Unsure if this is an issue, keep an eye out for it
-
+        p_rb.velocity = m_Speed; // TODO this is a pass by refrence I believe, which means this could completely control the speed of the player. Unsure if this is an issue, keep an eye out for it
+        
+        // m_prevPos = p_rb.position;
         // move the relative location of the staff tip to where is will be in the world
         // after this tick. If needed, also move the object that is being grabbed
         // TODO
+    }
 
-        // DEBUG
-        // if (Input.GetKey(KeyCode.UpArrow))
-        // {
-        //     Debug.Log("Touching Bot: " + TBot);
-        //     Debug.Log("YSpeed: " + m_Speed.y);
-        // }
+    private Vector2 HandleStaffControl()
+    {
+        Vector2 accel = Vector2.zero;
+
+        // TODO : work RotateAround() into HandleStaffExtentionInput()
+        // handle staff extension input
+        HandleStaffExtensionInput();
+
+        if (current_staff_state != staff_state.is_descended)
+        {
+            // updates staff direction wrt player
+            s_dir = (p_rb.position - s_rb.position).normalized;
+
+            // handle staff and player rotational inputs, depends on whether staff is connected to something
+            if (current_staff_state != staff_state.is_extending)
+                accel += HandleRotationalStaffInput();
+
+            // if the staff is out, calculate the current state of the staff, including
+            // how much it is compressed and the reqired accel change from that            
+            // if (current_staff_state == staff_state.is_extended) 
+            //     accel += HandleStaffCompression();
+        } 
+        else 
+        { 
+            s_rb.MovePosition(p_rb.position);
+        }
+
+        return accel;
+    }
+
+    /* 
+    * End Update Functions 
+    * 
+    * Start Player Controller Functions (includes physics)
+    */
+
+    private Vector2 HandleFrictionGravity()
+    {
+        MovementConstants movementConsts;
+        Vector2 accel = new Vector2(0f, 0f);
+
+        // pick the correct movement constants
+        if (TBot) movementConsts = GroundedMovement;
+        else movementConsts = AirbornMovement;
+
+        // handle accelerations gravity
+        accel.y += GlobalConstants.GRAVITY_ACCEL_upt;
+
+        // handle air resistance
+        Vector2 frictionAccel = Vector2.Scale(movementConsts.Friction, 
+                                              Vector2.Scale(m_Speed, m_Speed));
+        if (m_Speed.x > 0f) frictionAccel.x *= -1;
+        if (m_Speed.y > 0f) frictionAccel.y *= -1;
+        accel += frictionAccel; // air resistance
+
+        return accel;
+    }
+
+    private Vector2 LimitPlayerSpeed()
+    {
+        MovementConstants movementConsts;
+        Vector2 accel = new Vector2(0f, 0f);
+
+        // pick the correct movement constants
+        if (TBot) movementConsts = GroundedMovement;
+        else movementConsts = AirbornMovement;
+
+        // limit speed of the player. The player can only be slowed down by the TooFastAccel
+        // constant for a less jarring stop
+        if (m_Speed.x >= movementConsts.max_speed.x)
+        {
+            accel.x = movementConsts.max_speed.x - m_Speed.x;
+            accel.x = Mathf.Max(accel.x, -1*movementConsts.TooFastAccel.x);
+        }
+        if (m_Speed.x <= -1*movementConsts.max_speed.x)
+        {
+            accel.x = -1*movementConsts.max_speed.x - m_Speed.x;
+            accel.x = Mathf.Min(accel.x, movementConsts.TooFastAccel.x);
+        }
+        if (m_Speed.y >= movementConsts.max_speed.y)
+        {
+            accel.y = movementConsts.max_speed.y - m_Speed.y;
+            accel.y = Mathf.Max(accel.y, -1*movementConsts.TooFastAccel.y);
+        }
+        if (m_Speed.y <= -1*movementConsts.max_speed.y)
+        {
+            accel.y = -1*movementConsts.max_speed.y - m_Speed.y;
+            accel.y = Mathf.Min(accel.y, movementConsts.TooFastAccel.y);
+        }
+
+        return accel;
     }
 
     private Vector2 HandlePlayerStandardInput()
@@ -246,8 +400,6 @@ public class PlayerController : MonoBehaviour
             {
                 m_CurrJumpState = JumpState.PENDING_RELEASE;
             }
-
-            // Debug.Log("Jumping");
         }
 
         // choose what set of movementConstants to use right now
@@ -284,92 +436,46 @@ public class PlayerController : MonoBehaviour
         return accel;
     }
 
-    private Vector2 HandleRotationalStaffInput()
-    {
-        // DEBUG right now the code will just put the end of the staff right at where the
-        // mouse is pointed with little physics
-        Vector2 mousePos = Camera.main.ScreenToWorldPoint(Input.mousePosition) - transform.position;
-        
-        // Whether staff can move in direction of player input- may be blocked by an object
-        bool can_rotate = false;
-
-        // staff is colliding with an object 
-        if (s_PublicVariables.isCollidingStatic)
-        {
-            // is player moving away from staff- staff should not get stuck
-            if ((transform.position - s_TipLocation.position).magnitude > s_currLength) can_rotate = true;
-            // small system of linear equations to tell whether the requested direction of input is allowed
-            // basically, can two special orthonormal vectors combine with >=0 constants to get the requested direction
-            else 
-            {
-                Vector2 new_position_dir = (((s_currLength * mousePos.normalized) + (Vector2)transform.position) - s_PublicVariables.collisionLoc).normalized;
-                float x_constant = (new_position_dir.x - s_dir.x)/s_PublicVariables.collisionDir.x;
-                float y_constant = (new_position_dir.y - s_dir.y)/s_PublicVariables.collisionDir.y;
-                float comparison_error = -0.2f; // mathematically perfect system of linear equations would use >= 0 below.
-                if (x_constant >= comparison_error && y_constant >= comparison_error) can_rotate = true;
-
-            }
-        }
-        else can_rotate = true;
-
-        // MovePosition() has better collision detection than a straight position change.
-        if (can_rotate) s_RigidBody.MovePosition((s_currLength * mousePos.normalized) + (Vector2)transform.position);
-    
-        // check if we are connected to anything or not and the mass of what is connected.
-        // this will change the point of rotation to somewhere in between the player and
-        // object or not
-        // TODO
-
-        // get the desired angular velocity depending on player input to move the staff
-        // around. Make sure to calculate the initial angular velocity around the tip
-        // so angular velocity can be correctly limited
-        // TODO
-
-        // if the staff is not connected to anything, it should rotate around the player
-        // TODO
-
-        // if the staff is connected, rotations will be around the center of mass between
-        // the connected object and the player. For infinite mass objects, the center of
-        // mass will be right at the tip of the staff
-        // TODO
-
-        return new Vector2(0f, 0f);
-    }
+    /*
+    * End Player Controller Functions (includes physics)
+    * 
+    * Start Staff Controller Functions (includes physics)
+    */
 
     private Vector2 HandleStaffCompression()
     {
-
         Vector2 accel = Vector2.zero;
 
         // is staff tip colliding
-        if (s_PublicVariables.isCollidingStatic) 
+        if (staff.isCollidingStatic) 
         {
             // gets current distance from player to staff tip
-            s_currLength = (transform.position - (Vector3)s_PublicVariables.collisionLoc).magnitude;
+            s_LenCurr = (p_rb.position - staff.collisionLoc).magnitude;
 
-            // added acceleration : force dir of staff * delta staff diff * hooke's constant             
-            accel = s_dir * (s_rigidLength - s_currLength) * s_PublicVariables.STAFF_RESISTANCE;
-
-            // save the total acc given to the staff
-            s_currPE += accel;
-        } 
-        else 
-        {
-            // increases staff length until at rigid length
-            if (s_currLength < s_rigidLength) 
-            {
-                s_currLength = Mathf.Min((transform.position - (Vector3)s_PublicVariables.collisionLoc).magnitude, s_rigidLength); 
-            }
-
-            // releases staff's stored energy in one update
-            accel = s_currPE;
-            s_currPE = Vector2.zero;
+            // added acceleration : force dir of staff * delta staff diff * hooke's constant
+            // added dampening : -1 * current velocity * damping constant            
+            accel += (s_dir * (s_LenRigid - s_LenCurr) * staff.resistance);
+            accel += -1 * p_rb.velocity * staff.damping;
         }
+        else if ((s_LenCurr < s_LenRigid) && (current_staff_state == staff_state.is_extended)) 
+        {
+            // gets current distance from player to staff tip, stops at s_LenRigid
+            s_LenCurr = (p_rb.position - staff.collisionLoc).magnitude;
+            if (s_LenCurr > s_LenRigid) s_LenCurr = s_LenRigid;
+            
+            // added acceleration : force dir of staff * delta staff diff * hooke's constant             
+            accel += (s_dir * (s_LenRigid - s_LenCurr) * staff.resistance);
+        }
+
+        s_LenCurr = Mathf.Min(s_LenCurr, s_LenRigid);
         return accel;
     }
 
-    // will be called in HandleStaffCompression() fxn
-    private Vector2 HandleStaffToEntityInteraction() {
+    private Vector2 HandleStaffToEntityInteraction() 
+    {
+        
+        // will be called in HandleStaffCompression() fxn
+
         // check whether collision with fixed loc or not.
 
         // change staff length based on acceleration from non-player side
@@ -392,60 +498,238 @@ public class PlayerController : MonoBehaviour
         return Vector2.zero;
     }
 
-    private Vector2 HandleFrictionGravity()
+    /*
+    * End Staff Controller Functions (includes physics)
+    *
+    * Start Staff Controller Functions (not including physics - includes radians)
+    */
+
+    private Vector2 HandleRotationalStaffInput()
     {
-        MovementConstants movementConsts;
-        Vector2 accel = new Vector2(0f, 0f);
+        Vector2 accel = Vector2.zero;
+        bool mouse_should_control_player = false;
+        
+        if (staff.isCollidingStatic) 
+        {
+            Vector2 mouse_wrt_staff = mouse_wc + p_rb.position - staff.collisionLoc;
+            float dot = Vector2.Dot(mouse_wrt_staff, staff.collisionDir);
+            if (dot >= 0) mouse_should_control_player = true;
+        }
+        
+        // find the new rotator's radian position wrt the new origin
+        if ((current_mouse_state == mouse_control_state.on_staff) && mouse_should_control_player)
+        {
+            SetCurrentRadians(true);
+            current_mouse_state = mouse_control_state.on_player;
+        }
+        else if ((current_mouse_state == mouse_control_state.on_player) && TBot && !mouse_should_control_player)
+        {
+            SetCurrentRadians(false);
+            current_mouse_state = mouse_control_state.on_staff;
+        }
+  
+        // player or staff movement conditionals
+        if (staff.isCollidingStatic && (mouse_should_control_player || !TBot))
+        {
+            RotateAround(p_rb, s_rb, player_rotation, true);
+        }
+        else 
+        {
+            RotateAround(s_rb, p_rb, staff_rotation, false);
+        }
 
-        // pick the correct movement constants
-        if (TBot) movementConsts = GroundedMovement;
-        else movementConsts = AirbornMovement;
 
-        // handle accelerations gravity
-        accel.y += GlobalConstants.GRAVITY_ACCEL_upt;
+        // debugging
+        if (Input.GetKey(KeyCode.E))
+        {
+            // print ("stafftheta: " + s_rad);
+            print(s_dir);
+            // print ("playertheta: " + player_rotation.radians);
+            // print("rot req: " + m_RotSignRequested + " " + m_RotDistRequested);
+            // print("rotsignrequest: " + m_RotSignRequested);
+            // print("mscp"  + mouse_should_control_player);
+            // print(" ");
+        }
+    
+        /*
+        bool player_is_moving_away_from_staff = true;
 
-        // handle air resistance
-        Vector2 frictionAccel = Vector2.Scale(movementConsts.Friction, 
-                                              Vector2.Scale(m_Speed, m_Speed));
-        if (m_Speed.x > 0f) frictionAccel.x *= -1;
-        if (m_Speed.y > 0f) frictionAccel.y *= -1;
-        accel += frictionAccel; // air resistance
+        if (staff.isCollidingStatic) // check things on collision
+        {                            
+            Vector2 check = p_rb.position - m_prevPos;
+            float dot = Vector2.Dot(check, staff.collisionDir);
+            if (dot <= 0) player_is_moving_away_from_staff = false;
+        }
+        
+        // staff should be on the ground 
+        else if (mouse_should_control_player && (s_LenCurr < s_LenRigid))
+        {
+            // these two are very similar. when pimafs : staff needs to grow to full size before it can rotate
+            // when not, staff has to be at full length before moving. rotating amounts to straightening it out
+            // if (player_is_moving_away_from_staff) 
+            // {
+            if (s_LenCurr + 0.05 > s_LenRigid) 
+            {
+                float diff = s_LenRigid - s_LenCurr;
+                s_LenCurr = s_LenRigid;
+                if (Mathf.Abs(s_dir.x) >= Mathf.Abs(s_dir.y))
+                {
+                    p_rb.position = new Vector2(p_rb.position.x + diff, p_rb.position.y);
+                }
+                else
+                {
+                    p_rb.position = new Vector2(p_rb.position.x, p_rb.position.y + diff);
+                }
+            }
+            // }
+        }
+        else if (player_is_moving_away_from_staff && !mouse_should_control_player && (s_LenCurr >= s_LenRigid))
+        {
+            // staff should be moved by player change amount (from last update to this frame? is this one frame off? )
+            s_rb.position += p_rb.position - m_prevPos;
+        }
+
+        // // todo: possibly do nothing on this input 
+        // // these two are very similar. when pimafs : staff needs to grow to full size before it can rotate
+        // // when not, staff has to be at full length before moving. rotating amounts to straightening it out
+        // else if (mouse_should_control_player && (s_LenCurr < s_LenRigid))
+        // {
+        //     // in case where pimafs: do nothing.
+        //     // in other case, rotating amounts to straightening it out (maybe straightens faster?)
+        // }
+        */
+        
+
+        /*
+        // check if we are connected to anything or not and the mass of what is connected.
+        // this will change the point of rotation to somewhere in between the player and
+        // object or not
+        // TODO
+
+        // get the desired angular velocity depending on player input to move the staff
+        // around. Make sure to calculate the initial angular velocity around the tip
+        // so angular velocity can be correctly limited
+        // TODO
+
+        // if the staff is not connected to anything, it should rotate around the player
+        // TODO
+
+        // if the staff is connected, rotations will be around the center of mass between
+        // the connected object and the player. For infinite mass objects, the center of
+        // mass will be right at the tip of the staff
+        // TODO
+        */
 
         return accel;
     }
 
-    private Vector2 LimitPlayerSpeed()
+    private float RotateAround(Rigidbody2D rotated, Rigidbody2D around, RotationConstants rot, bool is_player)
     {
-        MovementConstants movementConsts;
-        Vector2 accel = new Vector2(0f, 0f);
+        Vector2 tangent;
+        if (TLeft && is_player && (m_RotSignRequested == 1)) tangent = s_dir;
+        else if (TRight && is_player && (m_RotSignRequested == -1)) tangent = s_dir;
 
-        // pick the correct movement constants
-        if (TBot) movementConsts = GroundedMovement;
-        else movementConsts = AirbornMovement;
+        else if (m_RotDistRequested > 0)
+        {
+            rot_speed = Mathf.Min(rot_speed + rot.accel_speedingUp, rot.max_speed);
+            float max_rotation = Mathf.Min((rot_speed/100), m_RotDistRequested);
+            float rotation_amount = max_rotation * m_RotDistRequested;
 
-        // limit speed of the player. The player can only be slowed down by the TooFastAccel
-        // constant for a less jarring stop
-        if (m_Speed.x >= movementConsts.MaxSpeed.x)
-        {
-            accel.x = movementConsts.MaxSpeed.x - m_Speed.x;
-            accel.x = Mathf.Max(accel.x, -1*movementConsts.TooFastAccel.x);
+            if (is_player)
+            {
+                if (m_RotSignRequested > 0) p_rad -= rotation_amount;
+                else p_rad += rotation_amount;
+                tangent = new Vector2(Mathf.Cos(p_rad), Mathf.Sin(p_rad));
+                around.MovePosition(staff.collisionLoc);
+            }
+            else
+            {
+                if (m_RotSignRequested > 0) s_rad -= rotation_amount;
+                else s_rad += rotation_amount;
+                tangent = new Vector2(Mathf.Cos(s_rad), Mathf.Sin(s_rad));
+            }
         }
-        if (m_Speed.x <= -1*movementConsts.MaxSpeed.x)
+        else
         {
-            accel.x = -1*movementConsts.MaxSpeed.x - m_Speed.x;
-            accel.x = Mathf.Min(accel.x, movementConsts.TooFastAccel.x);
-        }
-        if (m_Speed.y >= movementConsts.MaxSpeed.y)
-        {
-            accel.y = movementConsts.MaxSpeed.y - m_Speed.y;
-            accel.y = Mathf.Max(accel.y, -1*movementConsts.TooFastAccel.y);
-        }
-        if (m_Speed.y <= -1*movementConsts.MaxSpeed.y)
-        {
-            accel.y = -1*movementConsts.MaxSpeed.y - m_Speed.y;
-            accel.y = Mathf.Min(accel.y, movementConsts.TooFastAccel.y);
+            rot_speed = Mathf.Max(rot_speed - rot.accel_noInput, rot.base_speed);
+            tangent = -1 * rot.signed_mousePos * s_dir;
         }
 
-        return accel;
+        rotated.MovePosition((tangent * s_LenCurr) + around.position);
+
+        return 0;
     }
+
+    private void HandleStaffExtensionInput()
+    {
+        // first
+        if (m_StaffExtensionRequest)
+        {
+            // reset button
+            m_StaffExtensionRequest = false;
+            
+            if (current_staff_state == staff_state.is_extended)
+            {
+                current_staff_state = staff_state.is_descending;
+            }
+            else if (current_staff_state == staff_state.is_descended)
+            {
+                current_staff_state = staff_state.is_extending;
+            }
+            else if (current_staff_state == staff_state.is_extending)
+            {
+                current_staff_state = staff_state.is_descending;
+            }
+            else if (current_staff_state == staff_state.is_descending)
+            {
+                current_staff_state = staff_state.is_extending;
+            }
+        }
+
+        // then,
+        if (current_staff_state == staff_state.is_extending)
+        {
+            s_LenCurr = Mathf.Min(s_LenCurr + s_extend, s_LenRigid);
+            s_rb.MovePosition((mouse_wc.normalized * s_LenCurr) + p_rb.position);
+            
+            if (s_LenCurr == s_LenRigid) 
+            {
+                SetCurrentRadians(false);
+                current_staff_state = staff_state.is_extended;
+                current_mouse_state = mouse_control_state.on_staff;
+            }
+            else if (staff.CheckForwardCollision() || staff.CheckClockwiseSideCollision() || staff.CheckCounterClockwiseSideCollision())
+            {
+                current_staff_state = staff_state.is_descending;
+            }
+        }
+        else if (current_staff_state == staff_state.is_descending)
+        {
+            s_LenCurr = Mathf.Max(s_LenCurr - s_extend, 0f);
+            if (s_LenCurr <= 0f) current_staff_state = staff_state.is_descended;
+        }
+    }
+    
+    /*
+    * End Staff Controller Functions (not including physics - includes radians)
+    * 
+    * Start Helper Functions (General)
+    */
+
+    private void SetCurrentRadians(bool is_player)
+    {
+        if (is_player)
+        {
+            if (s_dir.y > 0) p_rad = Mathf.Acos(s_dir.x);
+            else p_rad = -1*Mathf.Acos(s_dir.x);
+        }
+        else 
+        {
+            if (-1*s_dir.y > 0) s_rad = Mathf.Acos(-1*s_dir.x);
+            else s_rad = -1*Mathf.Acos(-1*s_dir.x);
+        }
+    }
+
+    public Vector2 GetS_Dir() { return s_dir; }
+
 }

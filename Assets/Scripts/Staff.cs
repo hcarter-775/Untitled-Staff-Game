@@ -109,11 +109,6 @@
 //     //     }
 //     // }
 
-//     // public float GetRotDir() { return rot_dir; }
-//     // public bool IsVaulting() { return isVaulting; }
-//     // public bool IsAttached() { return isAttached; }
-//     // public float GetRotation() { return rb.rotation; }
-
 //     // components
 //     Rigidbody2D rb;
 //     Player player;
