@@ -42,10 +42,13 @@ public class PlayerController : MonoBehaviour
 
     // what degree difference between cursor position corresponds to a maximum rotational
     // input for moving the staff
-    public float DegreesForMaxRotation = 10f;
-    public float NormalStaffLength = 1f;
-    public float MaxStaffSpeedAir = 0.1f;
+    public float DegreesForMaxRotation = 45f;
+    public float StaffMoveDeadzone = 1f;
+    public float NormalStaffLength = 2f;
+    public float MaxStaffSpeedAir = 0.9f;
+    public float MinStaffSpeedAir = 0.001f; // anything less than this will become zero
     public float StaffAccelAir = 0.01f;
+    public float StaffDecelAir = 0.1f;
 
     // ContactFilters for top, bot, and sides of the player. They will get handled
     // in unique ways in the FixedUpdate section
@@ -59,7 +62,6 @@ public class PlayerController : MonoBehaviour
     private JumpState m_CurrJumpState;
     private int m_JumpsRemaining;
     private float m_XMoveRequested; // [-1, 1] for how much to move the player
-    private float m_RotMoveRequested; // [-1, 1] for how much to rotate the staff
 
     private Rigidbody2D m_Rigidbody;
     private Vector2 m_Speed;
@@ -79,15 +81,15 @@ public class PlayerController : MonoBehaviour
 
     // staff stuff
     private StaffController m_Staff;
-    private Vector2 m_StaffTipSpeed = new Vector2(0f, 0f);
-    private float CurrentStaffLength;
-    private bool m_IsStaffClockwise = false; // true for clockwise, false for counterclockwise
+    private float m_CurrentStaffLength;
+    private float m_CurRotMag;
+    private float m_StaffPosError; // [-180, 180] (degrees) for the target position of the staff tip vs the current position
 
     void Start()
     {
         m_Rigidbody = GetComponent<Rigidbody2D>();
         m_Staff = transform.GetChild(0).GetComponent<StaffController>();
-        CurrentStaffLength = NormalStaffLength;
+        m_CurrentStaffLength = NormalStaffLength;
 
         // setup default movement
         GroundedMovement.MaxSpeed = new Vector2(6f, 20f);
@@ -140,10 +142,8 @@ public class PlayerController : MonoBehaviour
         // get the position of the mouse relative to the player in order to find the rotational
         // input desired for the staff
         Vector2 mousePos = Camera.main.ScreenToWorldPoint(Input.mousePosition) - transform.position;
-        float angle = Vector2.SignedAngle(mousePos, (Vector2)m_Staff.transform.position - (Vector2)transform.position);
-        angle = Mathf.Max(angle, -1*DegreesForMaxRotation);
-        angle = Mathf.Min(angle, DegreesForMaxRotation);
-        m_RotMoveRequested = angle / DegreesForMaxRotation;
+        m_StaffPosError = -1*Vector2.SignedAngle(mousePos, (Vector2)m_Staff.transform.position -
+                                                           (Vector2)transform.position);
     }
 
     void FixedUpdate()
@@ -227,8 +227,6 @@ public class PlayerController : MonoBehaviour
             {
                 m_CurrJumpState = JumpState.PENDING_RELEASE;
             }
-
-            Debug.Log("Jumping");
         }
 
         // choose what set of movementConstants to use right now
@@ -271,40 +269,69 @@ public class PlayerController : MonoBehaviour
         // be other things to change it as well which is why another variable is needed
         var StaffPosChange = default(Vector2);
 
+        // calculate the number of decelleration frames needed to see if we should start
+        // slowing down
+        float DecelDegreesNeeded = (m_CurRotMag*m_CurRotMag) / (2*StaffDecelAir);
+
+        if (m_CurRotMag == 0 ||
+            (m_CurRotMag > 0 && -1*DecelDegreesNeeded > m_StaffPosError) ||
+            (m_CurRotMag < 0 && DecelDegreesNeeded < m_StaffPosError))
+        {
+            // the staff is far from the target position, keep accellerating
+            m_CurRotMag += (m_StaffPosError * StaffAccelAir);
+        }
+        else
+        {
+            // use the decel frames to decel at a constant rate until the staff
+            // is stopped
+            if (m_StaffPosError <= 0)
+            {
+                m_CurRotMag += StaffDecelAir;
+                m_CurRotMag = Mathf.Min(m_CurRotMag, 0f);
+            }
+            else
+            {
+                m_CurRotMag -= StaffDecelAir;
+                m_CurRotMag = Mathf.Max(m_CurRotMag, 0f);
+            }
+
+            // if this change is about to cause an overshoot, limit the rotational
+            // magnitude to land the staff at the correct position
+            if (m_StaffPosError * (m_StaffPosError + m_CurRotMag) < 0) m_CurRotMag = -1*m_StaffPosError;
+        }
+
+        // limit the staff speed to not be too fast or too slow
+        m_CurRotMag = Mathf.Max(m_CurRotMag, -1*MaxStaffSpeedAir);
+        m_CurRotMag = Mathf.Min(m_CurRotMag, MaxStaffSpeedAir);
+        if (m_CurRotMag >= -1*MinStaffSpeedAir && m_CurRotMag <= MinStaffSpeedAir) m_CurRotMag = 0f;
+
+        // convert the rotational motion to linear motion
+        StaffPosChange = m_CurRotMag * Vector2.Perpendicular(transform.position - 
+                                                             m_Staff.transform.position).normalized;
+        
         if (m_Staff.GetCurrentlyContacting())
         {
             // if the staff is connected, rotations will be around the center of mass between
             // the connected object and the player. For infinite mass objects, the center of
             // mass will be right at the tip of the staff
-            // TODO
+            print("StaffPosChange: " + StaffPosChange);
+            print("m_CurRotMag: " + m_CurRotMag);
+
+            // TODO right now the staff tip phases through things too easily
+
+            // TODO need the code that keeps the correct length
+            return StaffPosChange;
         }
         else
         {
-            // increase or decrease the current rotational velocity by the correct amount
-            // based on the input
-            // TODO right now there is a bug with the tip behaving differently clockwise
-            // and counterclockwise. Probably because I never change m_IsStaffClockwise
-            float CurRotMag = m_StaffTipSpeed.magnitude * (m_IsStaffClockwise ? 1 : -1);
-            CurRotMag += (m_RotMoveRequested * StaffAccelAir);
-            CurRotMag = Mathf.Max(CurRotMag, -1*MaxStaffSpeedAir);
-            CurRotMag = Mathf.Min(CurRotMag, MaxStaffSpeedAir);
-            m_StaffTipSpeed = (m_IsStaffClockwise ? 1 : -1) * CurRotMag * 
-                              Vector2.Perpendicular(transform.position - 
-                                                    m_Staff.transform.position).normalized;
+            // make sure the staff does not change in length from the current length of the staff
+            var RelativeStaffPos = (Vector2)transform.position - (Vector2)m_Staff.transform.position + StaffPosChange;
+            RelativeStaffPos = -1*Vector2.ClampMagnitude(RelativeStaffPos, m_CurrentStaffLength);
 
-            StaffPosChange = m_StaffTipSpeed;
-
-            // DEBUG
-            print("StaffTipSpeed: " + m_StaffTipSpeed);
-            print("CurRotMag: " + CurRotMag);
+            // the staff is in air, just rotate it around the player
+            m_Staff.transform.position = transform.position + (Vector3)RelativeStaffPos;
+            return new Vector2(0f, 0f);
         }
-
-        // make sure the staff does not change in length
-        var RelativeStaffPos = (Vector2)transform.position - (Vector2)m_Staff.transform.position + StaffPosChange;
-        RelativeStaffPos = -1*Vector2.ClampMagnitude(RelativeStaffPos, CurrentStaffLength);
-        m_Staff.transform.position = transform.position + (Vector3)RelativeStaffPos;
-    
-        return new Vector2(0f, 0f);
     }
 
     private Vector2 HandleStaffCompression()

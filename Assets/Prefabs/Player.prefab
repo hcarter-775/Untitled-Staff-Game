@@ -11,6 +11,7 @@ GameObject:
   - component: {fileID: 8330932896299805393}
   - component: {fileID: 742442659508394228}
   - component: {fileID: 7609877445861376187}
+  - component: {fileID: 1660804345834520817}
   m_Layer: 0
   m_Name: StaffTip
   m_TagString: Untagged
@@ -26,7 +27,7 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 711320730923176740}
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
-  m_LocalPosition: {x: 2, y: 0, z: 0}
+  m_LocalPosition: {x: 4, y: 0, z: 0}
   m_LocalScale: {x: 0.25, y: 0.125, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -120,6 +121,32 @@ CircleCollider2D:
   m_Offset: {x: 0, y: 0}
   serializedVersion: 2
   m_Radius: 0.05
+--- !u!114 &1660804345834520817
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 711320730923176740}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 80788ab563050433988bc988eab35e69, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  TipContactFilter:
+    useTriggers: 0
+    useLayerMask: 0
+    useDepth: 0
+    useOutsideDepth: 0
+    useNormalAngle: 0
+    useOutsideNormalAngle: 0
+    layerMask:
+      serializedVersion: 2
+      m_Bits: 0
+    minDepth: 0
+    maxDepth: 0
+    minNormalAngle: 0
+    maxNormalAngle: 0
 --- !u!1 &2937071776226611251
 GameObject:
   m_ObjectHideFlags: 0
@@ -311,7 +338,7 @@ Rigidbody2D:
   m_GameObject: {fileID: 8264499579648124875}
   m_BodyType: 0
   m_Simulated: 1
-  m_UseFullKinematicContacts: 0
+  m_UseFullKinematicContacts: 1
   m_UseAutoMass: 0
   m_Mass: 1
   m_LinearDrag: 0
@@ -391,8 +418,13 @@ MonoBehaviour:
     TooFastAccel: {x: 0, y: 0}
   NumberOfJumps: 3
   JumpImpulse: 5
-  DegreesForMaxRotation: 10
-  StaffLength: 1
+  DegreesForMaxRotation: 45
+  StaffMoveDeadzone: 1
+  NormalStaffLength: 2
+  MaxStaffSpeedAir: 0.9
+  MinStaffSpeedAir: 0.001
+  StaffAccelAir: 0.01
+  StaffDecelAir: 0.1
   BotContactFilter:
     useTriggers: 0
     useLayerMask: 0
