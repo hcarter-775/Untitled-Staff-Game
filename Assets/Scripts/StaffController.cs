@@ -9,6 +9,8 @@ public class StaffController : MonoBehaviour
     private Rigidbody2D staff_rigidbody;
     public Vector2 collisionLoc; // holds location of latest collison point
     public Vector2 collisionDir; // negative of the direction of the staff collision
+    public float relative_velocity;
+    
     public bool isCollidingStatic; // is staff currently in colliding
     public float damping;
     public float resistance; // spring constant
@@ -21,6 +23,7 @@ public class StaffController : MonoBehaviour
         resistance = 10f;
         damping = 0.35f;
         offset = 0.1f;
+        relative_velocity = 0;
     } 
 
     void OnCollisionEnter2D(Collision2D other) 

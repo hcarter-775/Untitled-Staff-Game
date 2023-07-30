@@ -47,7 +47,7 @@ public struct RotationConstants
     public float accel_changingDir;
     public float accel_noInput;
     public float radians;
-    public int   signed_mousePos;
+    public int   signed;
 }
 
 public class PlayerController : MonoBehaviour
@@ -161,7 +161,7 @@ public class PlayerController : MonoBehaviour
         staff_rotation.accel_speedingUp = 0.4f;
         staff_rotation.accel_noInput = 0.8f;
         staff_rotation.accel_changingDir = 0.5f;
-        staff_rotation.signed_mousePos = 1;
+        staff_rotation.signed = -1;
         // staff_rotation.radians = Mathf.Acos(s_dir.x);
         s_rad = Mathf.Acos(s_dir.x);
 
@@ -170,7 +170,7 @@ public class PlayerController : MonoBehaviour
         player_rotation.accel_speedingUp = 0.4f;
         player_rotation.accel_noInput = 0.8f;
         player_rotation.accel_changingDir = 0.5f;
-        player_rotation.signed_mousePos = -1;  
+        player_rotation.signed = 1;  
         // player_rotation.radians = -1*Mathf.Acos(s_dir.x);      
         p_rad = -1*Mathf.Acos(s_dir.x);
 
@@ -464,31 +464,39 @@ public class PlayerController : MonoBehaviour
 
     private Vector2 HandleStaffCompression(Vector2 linear_player_velocity)
     {
-        // for testing
-        if (s_LenCurr != s_LenRigid) { print(s_LenCurr); }
-        
         Vector2 accel = Vector2.zero;
 
         // is staff tip colliding
         if (staff.isCollidingStatic) 
         {
             // get what player position would have been using: p = p + vt
-            Vector2 incomplete_player_position = p_rb.position + linear_player_velocity * Time.fixedDeltaTime;
+            Vector2 linear_player_position = p_rb.position + (linear_player_velocity * Time.fixedDeltaTime);
 
             // gets current distance from player to staff tip
-            s_LenCurr = Mathf.Min((incomplete_player_position - staff.collisionLoc).magnitude, s_LenRigid);
+            s_LenCurr = Mathf.Min((linear_player_position - staff.collisionLoc).magnitude, s_LenRigid);
 
-            // added acceleration : force dir of staff * delta staff diff * hooke's constant
+            // added acceleration : force dir of staff * delta staff diff * spring constant
             // added dampening : -1 * current velocity * damping constant            
             accel += (s_dir * (s_LenRigid - s_LenCurr) * staff.resistance);
             accel += -1 * p_rb.velocity * staff.damping;
         }
         else if (s_LenCurr < s_LenRigid) 
         {
-            // gets current distance from player to staff tip, stops at s_LenRigid
-            s_LenCurr = Mathf.Min((p_rb.position - s_rb.position).magnitude, s_LenRigid);
+            // finds new relative staff position 
+            // first, with v = v + at, and then with p = p - vt.
+            staff.relative_velocity = staff.relative_velocity + (staff.resistance * Time.fixedDeltaTime);
+
+            Vector2 relative_staff_position = s_rb.position - (s_dir * staff.relative_velocity * Time.fixedDeltaTime);
+
+            // gets current distance from player to staff tip, stops at s_LenRigid, resets relative velocity
+            s_LenCurr = (p_rb.position - relative_staff_position).magnitude;
+            if (s_LenCurr > s_LenRigid) 
+            { 
+                staff.relative_velocity = 0f; 
+                s_LenCurr = s_LenRigid; 
+            }
             
-            // added acceleration : force dir of staff * delta staff diff * hooke's constant             
+            // added acceleration : force dir of staff * delta staff diff * spring constant             
             accel += (s_dir * (s_LenRigid - s_LenCurr) * staff.resistance);
         }
 
@@ -673,7 +681,7 @@ public class PlayerController : MonoBehaviour
         else
         {
             rot_velocity = Mathf.Max(rot_velocity - rot.accel_noInput, rot.base_speed);
-            tangent = -1 * rot.signed_mousePos * s_dir;
+            tangent = rot.signed * s_dir;
         }
 
         rotated.MovePosition((tangent * s_LenCurr) + around.position);
