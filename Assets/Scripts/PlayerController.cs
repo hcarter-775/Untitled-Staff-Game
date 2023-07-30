@@ -116,12 +116,14 @@ public class PlayerController : MonoBehaviour
     * start player and staff components :
     */
 
-    private float rot_speed;
+    private float rot_velocity;
 
     // player components 
     private Rigidbody2D p_rb;
-    private Vector2 m_Speed;
-    private Vector2 totalAccel;
+    private Vector2 p_velocity;
+    private Vector2 total_accel;
+    private Vector2 total_player_control_accel;
+    private Vector2 total_staff_control_accel;
     private Vector2 m_prevPos;
     private float p_rad;
 
@@ -208,7 +210,9 @@ public class PlayerController : MonoBehaviour
         RightContactFilter.maxNormalAngle = 270 - GlobalConstants.BOT_COLLISION_THRESH_deg;
     }
 
-    /* Update / Control Functions */
+    /* 
+    * Start Update Control Functions 
+    */
     void Update()
     {
         // Get the desired actions from the player through input
@@ -245,30 +249,27 @@ public class PlayerController : MonoBehaviour
         TRight = m_TouchingRight;
 
         // no accelleration at the start of the frame
-        totalAccel.x = 0;
-        totalAccel.y = 0;
+        total_accel.x = 0;
+        total_accel.y = 0;
 
-        // handle the player left and right linear inputs and the jump input
-        totalAccel += HandlePlayerStandardInput();
-
-        // handle gravity and friction acceleration
-        totalAccel += HandleFrictionGravity();
+        // handles player movement, friction, and gravity
+        total_accel += HandlePlayerControlFlow();
 
         // handles all staff components, including player rotation, staff extension, and compression
-        totalAccel += HandleStaffControl();
+        total_accel += HandleStaffControlFlow();
 
         // limit the velocities of the player as needed
-        m_Speed += totalAccel;
-        m_Speed += LimitPlayerSpeed();
+        p_velocity += total_accel;
+        p_velocity += LimitPlayerSpeed();
 
         // use collision detection to prevent the player from phasing through walls
-        if (TBot && m_Speed.y < 0) m_Speed.y = 0;
-        if (TTop && m_Speed.y > 0) m_Speed.y = 0;
-        if (TLeft && m_Speed.x < 0) m_Speed.x = 0;
-        if (TRight && m_Speed.x > 0) m_Speed.x = 0;
+        if (TBot && p_velocity.y < 0) p_velocity.y = 0;
+        if (TTop && p_velocity.y > 0) p_velocity.y = 0;
+        if (TLeft && p_velocity.x < 0) p_velocity.x = 0;
+        if (TRight && p_velocity.x > 0) p_velocity.x = 0;
 
         // set the new velocity of the player
-        p_rb.velocity = m_Speed; // TODO this is a pass by refrence I believe, which means this could completely control the speed of the player. Unsure if this is an issue, keep an eye out for it
+        p_rb.velocity = p_velocity; // TODO this is a pass by refrence I believe, which means this could completely control the speed of the player. Unsure if this is an issue, keep an eye out for it
         
         // m_prevPos = p_rb.position;
         // move the relative location of the staff tip to where is will be in the world
@@ -276,11 +277,24 @@ public class PlayerController : MonoBehaviour
         // TODO
     }
 
-    private Vector2 HandleStaffControl()
+    private Vector2 HandlePlayerControlFlow()
     {
-        Vector2 accel = Vector2.zero;
+        // no acceleration at the start of frame
+        total_player_control_accel = Vector2.zero;
 
-        // TODO : work RotateAround() into HandleStaffExtentionInput()
+        // handle the player left and right linear inputs and the jump input
+        total_player_control_accel += HandlePlayerStandardInput();
+
+        // handle gravity and friction acceleration
+        total_player_control_accel += HandleFrictionGravity();
+
+        return total_player_control_accel;
+    }
+
+    private Vector2 HandleStaffControlFlow()
+    {
+        total_staff_control_accel = Vector2.zero;
+
         // handle staff extension input
         HandleStaffExtensionInput();
 
@@ -289,25 +303,31 @@ public class PlayerController : MonoBehaviour
             // updates staff direction wrt player
             s_dir = (p_rb.position - s_rb.position).normalized;
 
-            // handle staff and player rotational inputs, depends on whether staff is connected to something
-            if (current_staff_state != staff_state.is_extending)
-                accel += HandleRotationalStaffInput();
-
             // if the staff is out, calculate the current state of the staff, including
             // how much it is compressed and the reqired accel change from that            
-            // if (current_staff_state == staff_state.is_extended) 
-            //     accel += HandleStaffCompression();
-        } 
-        else 
+            if (current_staff_state == staff_state.is_extended) 
+            {
+                Vector2 curr_player_velocity = p_velocity + total_player_control_accel;
+                total_staff_control_accel += HandleStaffCompression(curr_player_velocity);
+            }
+            
+            // handle staff and player rotational inputs, depends on whether staff is connected to something
+            if (current_staff_state != staff_state.is_extending)
+            {
+                HandleRotationalStaffInput();
+            }
+        }
+        else
         { 
+            // keep staff centered on player if unextended
             s_rb.MovePosition(p_rb.position);
         }
 
-        return accel;
+        return total_staff_control_accel;
     }
 
     /* 
-    * End Update Functions 
+    * End Update Control Functions 
     * 
     * Start Player Controller Functions (includes physics)
     */
@@ -326,9 +346,9 @@ public class PlayerController : MonoBehaviour
 
         // handle air resistance
         Vector2 frictionAccel = Vector2.Scale(movementConsts.Friction, 
-                                              Vector2.Scale(m_Speed, m_Speed));
-        if (m_Speed.x > 0f) frictionAccel.x *= -1;
-        if (m_Speed.y > 0f) frictionAccel.y *= -1;
+                                              Vector2.Scale(p_velocity, p_velocity));
+        if (p_velocity.x > 0f) frictionAccel.x *= -1;
+        if (p_velocity.y > 0f) frictionAccel.y *= -1;
         accel += frictionAccel; // air resistance
 
         return accel;
@@ -345,24 +365,24 @@ public class PlayerController : MonoBehaviour
 
         // limit speed of the player. The player can only be slowed down by the TooFastAccel
         // constant for a less jarring stop
-        if (m_Speed.x >= movementConsts.max_speed.x)
+        if (p_velocity.x >= movementConsts.max_speed.x)
         {
-            accel.x = movementConsts.max_speed.x - m_Speed.x;
+            accel.x = movementConsts.max_speed.x - p_velocity.x;
             accel.x = Mathf.Max(accel.x, -1*movementConsts.TooFastAccel.x);
         }
-        if (m_Speed.x <= -1*movementConsts.max_speed.x)
+        if (p_velocity.x <= -1*movementConsts.max_speed.x)
         {
-            accel.x = -1*movementConsts.max_speed.x - m_Speed.x;
+            accel.x = -1*movementConsts.max_speed.x - p_velocity.x;
             accel.x = Mathf.Min(accel.x, movementConsts.TooFastAccel.x);
         }
-        if (m_Speed.y >= movementConsts.max_speed.y)
+        if (p_velocity.y >= movementConsts.max_speed.y)
         {
-            accel.y = movementConsts.max_speed.y - m_Speed.y;
+            accel.y = movementConsts.max_speed.y - p_velocity.y;
             accel.y = Mathf.Max(accel.y, -1*movementConsts.TooFastAccel.y);
         }
-        if (m_Speed.y <= -1*movementConsts.max_speed.y)
+        if (p_velocity.y <= -1*movementConsts.max_speed.y)
         {
-            accel.y = -1*movementConsts.max_speed.y - m_Speed.y;
+            accel.y = -1*movementConsts.max_speed.y - p_velocity.y;
             accel.y = Mathf.Min(accel.y, movementConsts.TooFastAccel.y);
         }
 
@@ -406,16 +426,16 @@ public class PlayerController : MonoBehaviour
         if (TBot) movementConsts = GroundedMovement;
         else movementConsts = AirbornMovement;
 
-        float xSpeedInc = m_XMoveRequested * m_Speed.x;
+        float xSpeedInc = m_XMoveRequested * p_velocity.x;
         if (m_XMoveRequested == 0)
         {
             // no input from the user, use the no input accel to slow down the player
             xSpeedInc = movementConsts.XAccelNoInput;
-            if (m_Speed.x <= xSpeedInc && m_Speed.x >= -1*xSpeedInc)
+            if (p_velocity.x <= xSpeedInc && p_velocity.x >= -1*xSpeedInc)
             {
-                xSpeedInc = -1*m_Speed.x; // make sure the player stops moving at low speed
+                xSpeedInc = -1*p_velocity.x; // make sure the player stops moving at low speed
             }
-            else if (xSpeedInc * m_Speed.x > 0)
+            else if (xSpeedInc * p_velocity.x > 0)
             {
                 // change the direction if needed to make the player always slow down
                 xSpeedInc *= -1;
@@ -442,32 +462,36 @@ public class PlayerController : MonoBehaviour
     * Start Staff Controller Functions (includes physics)
     */
 
-    private Vector2 HandleStaffCompression()
+    private Vector2 HandleStaffCompression(Vector2 linear_player_velocity)
     {
+        // for testing
+        if (s_LenCurr != s_LenRigid) { print(s_LenCurr); }
+        
         Vector2 accel = Vector2.zero;
 
         // is staff tip colliding
         if (staff.isCollidingStatic) 
         {
+            // get what player position would have been using: p = p + vt
+            Vector2 incomplete_player_position = p_rb.position + linear_player_velocity * Time.fixedDeltaTime;
+
             // gets current distance from player to staff tip
-            s_LenCurr = (p_rb.position - staff.collisionLoc).magnitude;
+            s_LenCurr = Mathf.Min((incomplete_player_position - staff.collisionLoc).magnitude, s_LenRigid);
 
             // added acceleration : force dir of staff * delta staff diff * hooke's constant
             // added dampening : -1 * current velocity * damping constant            
             accel += (s_dir * (s_LenRigid - s_LenCurr) * staff.resistance);
             accel += -1 * p_rb.velocity * staff.damping;
         }
-        else if ((s_LenCurr < s_LenRigid) && (current_staff_state == staff_state.is_extended)) 
+        else if (s_LenCurr < s_LenRigid) 
         {
             // gets current distance from player to staff tip, stops at s_LenRigid
-            s_LenCurr = (p_rb.position - staff.collisionLoc).magnitude;
-            if (s_LenCurr > s_LenRigid) s_LenCurr = s_LenRigid;
+            s_LenCurr = Mathf.Min((p_rb.position - s_rb.position).magnitude, s_LenRigid);
             
             // added acceleration : force dir of staff * delta staff diff * hooke's constant             
             accel += (s_dir * (s_LenRigid - s_LenCurr) * staff.resistance);
         }
 
-        s_LenCurr = Mathf.Min(s_LenCurr, s_LenRigid);
         return accel;
     }
 
@@ -504,7 +528,7 @@ public class PlayerController : MonoBehaviour
     * Start Staff Controller Functions (not including physics - includes radians)
     */
 
-    private Vector2 HandleRotationalStaffInput()
+    private void HandleRotationalStaffInput()
     {
         Vector2 accel = Vector2.zero;
         bool mouse_should_control_player = false;
@@ -599,7 +623,6 @@ public class PlayerController : MonoBehaviour
         // }
         */
         
-
         /*
         // check if we are connected to anything or not and the mass of what is connected.
         // this will change the point of rotation to somewhere in between the player and
@@ -620,7 +643,6 @@ public class PlayerController : MonoBehaviour
         // TODO
         */
 
-        return accel;
     }
 
     private float RotateAround(Rigidbody2D rotated, Rigidbody2D around, RotationConstants rot, bool is_player)
@@ -631,9 +653,8 @@ public class PlayerController : MonoBehaviour
 
         else if (m_RotDistRequested > 0)
         {
-            rot_speed = Mathf.Min(rot_speed + rot.accel_speedingUp, rot.max_speed);
-            float max_rotation = Mathf.Min((rot_speed/100), m_RotDistRequested);
-            float rotation_amount = max_rotation * m_RotDistRequested;
+            rot_velocity = Mathf.Min(rot_velocity + rot.accel_speedingUp, rot.max_speed);
+            float rotation_amount = (rot_velocity/100) * m_RotDistRequested;
 
             if (is_player)
             {
@@ -651,7 +672,7 @@ public class PlayerController : MonoBehaviour
         }
         else
         {
-            rot_speed = Mathf.Max(rot_speed - rot.accel_noInput, rot.base_speed);
+            rot_velocity = Mathf.Max(rot_velocity - rot.accel_noInput, rot.base_speed);
             tangent = -1 * rot.signed_mousePos * s_dir;
         }
 

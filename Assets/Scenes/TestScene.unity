@@ -499,7 +499,7 @@ Rigidbody2D:
   m_UseFullKinematicContacts: 0
   m_UseAutoMass: 0
   m_Mass: 1
-  m_LinearDrag: 0
+  m_LinearDrag: 1
   m_AngularDrag: 0
   m_GravityScale: 0
   m_Material: {fileID: 0}
@@ -525,12 +525,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 80788ab563050433988bc988eab35e69, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  saved_s_dir: {x: 0, y: 0}
   collisionLoc: {x: 0, y: 0}
   collisionDir: {x: 0, y: 0}
   isCollidingStatic: 0
-  damping: 0.35
-  resistance: 10
+  damping: 0.55
+  resistance: 6
   offset: 0
 --- !u!1 &1342385696
 GameObject:
@@ -2298,7 +2297,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 1791915972253293681, guid: c9bc52c59a801c14cae5a859c1b732c5, type: 3}
       propertyPath: m_LocalPosition.x
-      value: -5.13
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 1791915972253293681, guid: c9bc52c59a801c14cae5a859c1b732c5, type: 3}
       propertyPath: m_LocalPosition.y
@@ -2306,7 +2305,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 1791915972253293681, guid: c9bc52c59a801c14cae5a859c1b732c5, type: 3}
       propertyPath: m_LocalPosition.z
-      value: 0
+      value: 1
       objectReference: {fileID: 0}
     - target: {fileID: 1791915972253293681, guid: c9bc52c59a801c14cae5a859c1b732c5, type: 3}
       propertyPath: m_LocalRotation.w
