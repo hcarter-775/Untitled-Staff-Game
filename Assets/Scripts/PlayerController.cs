@@ -122,8 +122,6 @@ public class PlayerController : MonoBehaviour
     private Rigidbody2D p_rb;
     private Vector2 p_velocity;
     private Vector2 total_accel;
-    private Vector2 total_player_control_accel;
-    private Vector2 total_staff_control_accel;
     private Vector2 m_prevPos;
     private float p_rad;
 
@@ -253,10 +251,10 @@ public class PlayerController : MonoBehaviour
         total_accel.y = 0;
 
         // handles player movement, friction, and gravity
-        total_accel += HandlePlayerControlFlow();
+        HandlePlayerControlFlow();
 
         // handles all staff components, including player rotation, staff extension, and compression
-        total_accel += HandleStaffControlFlow();
+        HandleStaffControlFlow();
 
         // limit the velocities of the player as needed
         p_velocity += total_accel;
@@ -277,24 +275,17 @@ public class PlayerController : MonoBehaviour
         // TODO
     }
 
-    private Vector2 HandlePlayerControlFlow()
+    private void HandlePlayerControlFlow()
     {
-        // no acceleration at the start of frame
-        total_player_control_accel = Vector2.zero;
-
         // handle the player left and right linear inputs and the jump input
-        total_player_control_accel += HandlePlayerStandardInput();
+        total_accel += HandlePlayerStandardInput();
 
         // handle gravity and friction acceleration
-        total_player_control_accel += HandleFrictionGravity();
-
-        return total_player_control_accel;
+        total_accel += HandleFrictionGravity();
     }
 
-    private Vector2 HandleStaffControlFlow()
+    private void HandleStaffControlFlow()
     {
-        total_staff_control_accel = Vector2.zero;
-
         // handle staff extension input
         HandleStaffExtensionInput();
 
@@ -307,8 +298,8 @@ public class PlayerController : MonoBehaviour
             // how much it is compressed and the reqired accel change from that            
             if (current_staff_state == staff_state.is_extended) 
             {
-                Vector2 curr_player_velocity = p_velocity + total_player_control_accel;
-                total_staff_control_accel += HandleStaffCompression(curr_player_velocity);
+                Vector2 curr_player_velocity = p_velocity + total_accel;
+                total_accel += HandleStaffCompression(curr_player_velocity);
             }
             
             // handle staff and player rotational inputs, depends on whether staff is connected to something
@@ -322,8 +313,6 @@ public class PlayerController : MonoBehaviour
             // keep staff centered on player if unextended
             s_rb.MovePosition(p_rb.position);
         }
-
-        return total_staff_control_accel;
     }
 
     /* 
@@ -538,7 +527,6 @@ public class PlayerController : MonoBehaviour
 
     private void HandleRotationalStaffInput()
     {
-        Vector2 accel = Vector2.zero;
         bool mouse_should_control_player = false;
         
         if (staff.isCollidingStatic) 
@@ -548,13 +536,14 @@ public class PlayerController : MonoBehaviour
             if (dot >= 0) mouse_should_control_player = true;
         }
         
-        // find the new rotator's radian position wrt the new origin
+        // current mouse state marks who is currently being controlled. If there is a change in control,
+        // the radians of the new "rotated" with respect to the new "origin" are calculated in SetCurrentRadians()
         if ((current_mouse_state == mouse_control_state.on_staff) && mouse_should_control_player)
         {
             SetCurrentRadians(true);
             current_mouse_state = mouse_control_state.on_player;
         }
-        else if ((current_mouse_state == mouse_control_state.on_player) && TBot && !mouse_should_control_player)
+        else if ((current_mouse_state == mouse_control_state.on_player) && !mouse_should_control_player && TBot)
         {
             SetCurrentRadians(false);
             current_mouse_state = mouse_control_state.on_staff;
@@ -662,19 +651,24 @@ public class PlayerController : MonoBehaviour
         else if (m_RotDistRequested > 0)
         {
             rot_velocity = Mathf.Min(rot_velocity + rot.accel_speedingUp, rot.max_speed);
-            float rotation_amount = (rot_velocity/100) * m_RotDistRequested;
+            
+            float velocity_over_100 = rot_velocity/100;
+            float delta_radians = 0;
 
+            if (velocity_over_100 <= m_RotDistRequested) delta_radians = velocity_over_100;
+            else delta_radians = velocity_over_100 * m_RotDistRequested;
+            
             if (is_player)
             {
-                if (m_RotSignRequested > 0) p_rad -= rotation_amount;
-                else p_rad += rotation_amount;
+                if (m_RotSignRequested > 0) p_rad -= delta_radians;
+                else p_rad += delta_radians;
                 tangent = new Vector2(Mathf.Cos(p_rad), Mathf.Sin(p_rad));
                 around.MovePosition(staff.collisionLoc);
             }
             else
             {
-                if (m_RotSignRequested > 0) s_rad -= rotation_amount;
-                else s_rad += rotation_amount;
+                if (m_RotSignRequested > 0) s_rad -= delta_radians;
+                else s_rad += delta_radians;
                 tangent = new Vector2(Mathf.Cos(s_rad), Mathf.Sin(s_rad));
             }
         }
